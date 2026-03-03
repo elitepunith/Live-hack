@@ -48,6 +48,7 @@
       </div>
       <div class="divider-v"></div>
       <span class="mono clock" id="utc-clock">00:00:00 UTC</span>
+      <div id="data-source-badge" class="mono" style="font-size:8px;padding:3px 8px;border:1px solid rgba(0,229,255,0.2);color:rgba(0,229,255,0.5);letter-spacing:.12em">⬡ SIMULATED</div>
       <div class="online-badge">
         <span class="dot-green"></span>
         <span class="mono">ONLINE</span>
@@ -140,6 +141,9 @@
     <div class="tooltip-route" id="tt-route"></div>
     <div class="tooltip-detail mono" id="tt-detail"></div>
   </div>
+
+  <!-- Status toast -->
+  <div id="status-toast" class="mono" style="position:fixed;bottom:72px;left:50%;transform:translateX(-50%);z-index:200;background:rgba(2,10,18,0.92);border:1px solid rgba(0,229,255,0.2);padding:6px 16px;font-size:9px;color:rgba(0,229,255,0.6);letter-spacing:.1em;opacity:0;transition:opacity .4s;pointer-events:none;white-space:nowrap"></div>
 
   <!-- Globe.gl from CDN -->
   <script src="https://unpkg.com/globe.gl@2.32.1/dist/globe.gl.min.js"></script>
