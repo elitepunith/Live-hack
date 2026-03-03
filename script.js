@@ -1,13 +1,23 @@
+// ─────────────────────────────────────────────────────────────
+//  Live-Hack · script.js
+//
+//  Free APIs:
+//  · AlienVault OTX  — real malicious IPs (free key)
+//    https://otx.alienvault.com/ → Settings → API Key
+//  · ip-api.com      — geolocate IPs (no key needed)
+// ─────────────────────────────────────────────────────────────
+
 const CONFIG = {
   OTX_KEY:      '45767dabedb31cf712af5df63ac8d1765fd85a4cc88d01f0b9f9216b95df5884',
   OTX_INTERVAL: 30000,
   SIM_MIN_MS:   900,
-  SIM_MAX_MS:   2600,
-  MAX_ARCS:     60,
+  SIM_MAX_MS:   2500,
+  MAX_ARCS:     55,
   MAX_FEED:     80,
+  ARC_LIFETIME: 14000,
 }
 
-// ── Country database ────────────────────────────────────────
+// ── Country database (deduplicated — UA was listed twice before) ──
 const GEO = [
   { code:'CN', name:'China',          lat:35.86,  lng:104.19,  flag:'🇨🇳' },
   { code:'RU', name:'Russia',         lat:61.52,  lng:105.31,  flag:'🇷🇺' },
@@ -16,7 +26,7 @@ const GEO = [
   { code:'BR', name:'Brazil',         lat:-14.23, lng:-51.92,  flag:'🇧🇷' },
   { code:'DE', name:'Germany',        lat:51.16,  lng:10.45,   flag:'🇩🇪' },
   { code:'NL', name:'Netherlands',    lat:52.13,  lng:5.29,    flag:'🇳🇱' },
-  { code:'KP', name:'North Korea',    lat:40.33,  lng:127.51,  flag:'🇰🇵' },
+  { code:'KP', name:'N. Korea',       lat:40.33,  lng:127.51,  flag:'🇰🇵' },
   { code:'IR', name:'Iran',           lat:32.42,  lng:53.68,   flag:'🇮🇷' },
   { code:'UA', name:'Ukraine',        lat:48.37,  lng:31.16,   flag:'🇺🇦' },
   { code:'RO', name:'Romania',        lat:45.94,  lng:24.96,   flag:'🇷🇴' },
@@ -48,20 +58,20 @@ const GEO = [
   { code:'BE', name:'Belgium',        lat:50.50,  lng:4.46,    flag:'🇧🇪' },
   { code:'CH', name:'Switzerland',    lat:46.81,  lng:8.22,    flag:'🇨🇭' },
   { code:'TH', name:'Thailand',       lat:15.87,  lng:100.99,  flag:'🇹🇭' },
-  { code:'UA', name:'Ukraine',        lat:48.37,  lng:31.16,   flag:'🇺🇦' },
+  { code:'CZ', name:'Czech Rep.',     lat:49.81,  lng:15.47,   flag:'🇨🇿' },
 ]
 
 const ATTACK_TYPES = [
   { id:'ddos',       label:'DDoS',        color:'#ef4444', severity:'critical', weight:18, ports:[80,443,53,123] },
-  { id:'ransomware', label:'Ransomware',  color:'#f97316', severity:'critical', weight:5,  ports:[445,3389,139] },
-  { id:'malware',    label:'Malware C2',  color:'#a855f7', severity:'critical', weight:8,  ports:[4444,8888,1337] },
-  { id:'zeroday',    label:'Zero-Day',    color:'#f8fafc', severity:'critical', weight:2,  ports:[80,443] },
-  { id:'bruteforce', label:'Brute Force', color:'#eab308', severity:'high',     weight:15, ports:[22,3389,21] },
-  { id:'sqli',       label:'SQL Inject',  color:'#8b5cf6', severity:'high',     weight:12, ports:[80,443,8080] },
-  { id:'phishing',   label:'Phishing',    color:'#f97316', severity:'medium',   weight:10, ports:[80,443,25] },
-  { id:'portscan',   label:'Port Scan',   color:'#3b82f6', severity:'low',      weight:20, ports:[22,80,443,3389] },
-  { id:'xss',        label:'XSS',         color:'#06b6d4', severity:'medium',   weight:7,  ports:[80,443,8080] },
-  { id:'mitm',       label:'MITM',        color:'#22c55e', severity:'high',     weight:3,  ports:[80,443] },
+  { id:'ransomware', label:'Ransomware',  color:'#f97316', severity:'critical', weight:5,  ports:[445,3389,139]  },
+  { id:'malware',    label:'Malware C2',  color:'#a855f7', severity:'critical', weight:8,  ports:[4444,8888,1337]},
+  { id:'zeroday',    label:'Zero-Day',    color:'#e2e8f0', severity:'critical', weight:2,  ports:[80,443]        },
+  { id:'bruteforce', label:'Brute Force', color:'#eab308', severity:'high',     weight:15, ports:[22,3389,21]    },
+  { id:'sqli',       label:'SQL Inject',  color:'#8b5cf6', severity:'high',     weight:12, ports:[80,443,8080]   },
+  { id:'phishing',   label:'Phishing',    color:'#fb923c', severity:'medium',   weight:10, ports:[80,443,25]     },
+  { id:'portscan',   label:'Port Scan',   color:'#3b82f6', severity:'low',      weight:20, ports:[22,80,443,3389]},
+  { id:'xss',        label:'XSS',         color:'#06b6d4', severity:'medium',   weight:7,  ports:[80,443,8080]   },
+  { id:'mitm',       label:'MITM',        color:'#22c55e', severity:'high',     weight:3,  ports:[80,443]        },
 ]
 
 const OTX_TYPE_MAP = {
@@ -92,7 +102,7 @@ const IP_POOLS = {
   _:['45.33','162.241','104.244','198.199'],
 }
 
-// ── Helpers ─────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────
 function weighted(map) {
   const keys = Object.keys(map), vals = Object.values(map)
   const total = vals.reduce((a,b) => a+b, 0)
@@ -108,10 +118,10 @@ function pickType() {
   return ATTACK_TYPES[0]
 }
 
-const ri  = (a,b) => Math.floor(Math.random()*(b-a+1))+a
-const jit = ()    => (Math.random()-0.5)*3
-const byCode  = c => GEO.find(g => g.code === c)
-const randGeo = () => GEO[Math.floor(Math.random()*GEO.length)]
+const ri      = (a,b) => Math.floor(Math.random()*(b-a+1))+a
+const jit     = ()    => (Math.random()-0.5)*2.5
+const byCode  = c     => GEO.find(g => g.code === c)
+const randGeo = ()    => GEO[Math.floor(Math.random()*GEO.length)]
 
 function fakeIP(code) {
   const pool = IP_POOLS[code] || IP_POOLS._
@@ -121,7 +131,7 @@ function fakeIP(code) {
 let totalCount = ri(160000, 220000)
 const perMinBucket = []
 
-// ── Simulation ───────────────────────────────────────────────
+// ── Simulation ────────────────────────────────────────────────
 function simulate() {
   const srcCode = weighted(SRC_WEIGHTS)
   let tgtCode
@@ -147,7 +157,7 @@ function simulate() {
   }
 }
 
-// ── OTX + ip-api real data ───────────────────────────────────
+// ── OTX + ip-api real data ────────────────────────────────────
 const otxSeen  = new Set()
 const geoCache = {}
 
@@ -163,7 +173,9 @@ async function geolocateIPs(ips) {
     if (!res.ok) return
     const rows = await res.json()
     rows.forEach(r => {
-      if (r.status === 'success') geoCache[r.query] = { code:r.countryCode, name:r.country, lat:r.lat, lng:r.lon }
+      if (r.status === 'success') {
+        geoCache[r.query] = { code:r.countryCode, name:r.country, lat:r.lat, lng:r.lon }
+      }
     })
   } catch {}
 }
@@ -185,14 +197,14 @@ async function pulseToAttacks(pulse) {
 
   return inds.map(ind => {
     otxSeen.add(ind.indicator)
-    const geo = geoCache[ind.indicator]
+    const geo     = geoCache[ind.indicator]
     const matched = geo ? byCode(geo.code) : null
     const src = geo
       ? { code:geo.code, name:geo.name||geo.code, lat:geo.lat+jit(), lng:geo.lng+jit(), ip:ind.indicator, flag:matched?.flag||'🌐' }
       : (() => { const f = randGeo(); return { ...f, lat:f.lat+jit(), lng:f.lng+jit(), ip:ind.indicator } })()
 
     const tgtCode = weighted(TGT_WEIGHTS)
-    const tgt = byCode(tgtCode)
+    const tgt     = byCode(tgtCode)
     if (!tgt) return null
 
     totalCount++
@@ -217,8 +229,8 @@ async function pollOTX() {
     const res = await fetch('https://otx.alienvault.com/api/v1/pulses/activity?limit=15', {
       headers: { 'X-OTX-API-KEY': CONFIG.OTX_KEY }
     })
-    if (!res.ok) throw new Error(`${res.status}`)
-    const data = await res.json()
+    if (!res.ok) throw new Error(`OTX ${res.status}`)
+    const data   = await res.json()
     const pulses = data.results || []
 
     for (const pulse of pulses) {
@@ -228,137 +240,210 @@ async function pollOTX() {
         await new Promise(r => setTimeout(r, 500))
       }
     }
-    document.getElementById('data-source').textContent = 'OTX Live'
-    document.getElementById('data-source').style.color = '#22c55e'
+
+    const el = document.getElementById('data-source')
+    el.textContent  = 'OTX Live'
+    el.style.color  = '#22c55e'
   } catch (e) {
-    console.warn('OTX unavailable:', e.message)
+    console.warn('OTX poll failed:', e.message)
   }
 }
 
 // ── State ─────────────────────────────────────────────────────
 const state = {
   attacks:   [],
-  arcLayers: [],
+  svgArcs:   [],
   srcTally:  {},
   tgtTally:  {},
   typeTally: {},
   filter:    'all',
   map:       null,
-  arcGroup:  null,
-  dotGroup:  null,
 }
 
 ATTACK_TYPES.forEach(t => { state.typeTally[t.id] = 0 })
 
-// ── Leaflet map ───────────────────────────────────────────────
+// ── Map init ──────────────────────────────────────────────────
 function initMap() {
   const map = L.map('map', {
-    center: [25, 15],
+    center: [22, 10],
     zoom:   3,
     zoomControl: true,
     attributionControl: false,
     minZoom: 2,
     maxZoom: 8,
+    zoomAnimation: true,
   })
 
-  // Dark tile layer from CartoDB
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  // dark_nolabels = clean dark tiles with no country/city labels
+  // Labels in our own SVG/HTML stay correct and match our GEO data
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png', {
     subdomains: 'abcd',
     maxZoom: 20,
   }).addTo(map)
 
-  state.arcGroup = L.layerGroup().addTo(map)
-  state.dotGroup = L.layerGroup().addTo(map)
   state.map = map
+
+  // Redraw arcs on map pan/zoom so they stay aligned
+  map.on('move zoom moveend zoomend', redrawAllArcs)
+
+  window.addEventListener('resize', () => {
+    map.invalidateSize()
+    redrawAllArcs()
+  })
 }
 
-function latLngToPoint(lat, lng) {
-  return state.map.latLngToContainerPoint([lat, lng])
+// ── SVG arc drawing (smooth, animated stroke-dashoffset) ──────
+const svg = () => document.getElementById('arc-svg')
+
+function latLngToSVG(lat, lng) {
+  const point = state.map.latLngToContainerPoint([lat, lng])
+  return { x: point.x, y: point.y }
 }
 
-// Draw a curved arc between two lat/lng points using SVG on the Leaflet pane
+// Build a quadratic bezier SVG path between two map points
+function buildPath(x1, y1, x2, y2) {
+  const mx  = (x1 + x2) / 2
+  const my  = (y1 + y2) / 2
+  const dx  = x2 - x1
+  const dy  = y2 - y1
+  const len = Math.sqrt(dx*dx + dy*dy)
+  // Control point lifted perpendicular to the arc, scaled by distance
+  const lift = Math.min(len * 0.35, 180)
+  const cx   = mx - (dy / len) * lift
+  const cy   = my + (dx / len) * lift
+  return `M ${x1} ${y1} Q ${cx} ${cy} ${x2} ${y2}`
+}
+
+// Approximate path length for dash animation
+function approxPathLen(x1, y1, x2, y2) {
+  const dx = x2 - x1, dy = y2 - y1
+  return Math.sqrt(dx*dx + dy*dy) * 1.15
+}
+
 function drawArc(atk) {
   if (state.filter !== 'all' && atk.type !== state.filter) return
 
-  const color = atk.color
-  const weight = atk.source === 'otx' ? 2 : 1.2
-  const opacity = atk.source === 'otx' ? 0.85 : 0.6
+  const s = latLngToSVG(atk.src.lat, atk.src.lng)
+  const t = latLngToSVG(atk.tgt.lat, atk.tgt.lng)
+  const d = buildPath(s.x, s.y, t.x, t.y)
+  const pathLen = approxPathLen(s.x, s.y, t.x, t.y)
 
-  // Great circle approximation: interpolate points along the arc
-  const points = interpolateArc(atk.src.lat, atk.src.lng, atk.tgt.lat, atk.tgt.lng, 40)
+  const color   = atk.color
+  const isReal  = atk.source === 'otx'
+  const weight  = isReal ? 1.8 : 1.2
+  const opacity = isReal ? 0.9 : 0.65
+  const dur     = 1200 + Math.random() * 600
 
-  const polyline = L.polyline(points, {
-    color,
-    weight,
-    opacity,
-    className: 'attack-arc',
-    dashArray: '6 4',
-  })
+  const g = document.createElementNS('http://www.w3.org/2000/svg', 'g')
+  g.setAttribute('data-id', atk.id)
+  g.setAttribute('data-src-lat', atk.src.lat)
+  g.setAttribute('data-src-lng', atk.src.lng)
+  g.setAttribute('data-tgt-lat', atk.tgt.lat)
+  g.setAttribute('data-tgt-lng', atk.tgt.lng)
 
-  polyline.addTo(state.arcGroup)
+  // Glow layer (blurred duplicate)
+  const glowPath = document.createElementNS('http://www.w3.org/2000/svg', 'path')
+  glowPath.setAttribute('d', d)
+  glowPath.setAttribute('stroke', color)
+  glowPath.setAttribute('stroke-width', weight + 2)
+  glowPath.setAttribute('stroke-opacity', '0.2')
+  glowPath.setAttribute('fill', 'none')
+  glowPath.setAttribute('filter', 'url(#glow-any)')
+  glowPath.style.strokeDasharray  = pathLen
+  glowPath.style.strokeDashoffset = pathLen
+  glowPath.style.animation = `arc-travel ${dur}ms ease-out forwards`
 
-  // Animated dot moving along the arc
-  animateDot(points, color, atk)
+  // Main arc
+  const mainPath = document.createElementNS('http://www.w3.org/2000/svg', 'path')
+  mainPath.setAttribute('d', d)
+  mainPath.setAttribute('stroke', color)
+  mainPath.setAttribute('stroke-width', weight)
+  mainPath.setAttribute('stroke-opacity', opacity)
+  mainPath.setAttribute('stroke-linecap', 'round')
+  mainPath.setAttribute('fill', 'none')
+  mainPath.style.strokeDasharray  = pathLen
+  mainPath.style.strokeDashoffset = pathLen
+  mainPath.style.animation = `arc-travel ${dur}ms ease-out forwards`
 
-  // Target pulse marker
-  const pulse = L.circleMarker([atk.tgt.lat, atk.tgt.lng], {
-    radius: 5,
-    color,
-    weight: 1.5,
-    fillColor: color,
-    fillOpacity: 0.3,
-  }).addTo(state.dotGroup)
+  // Source dot
+  const srcDot = document.createElementNS('http://www.w3.org/2000/svg', 'circle')
+  srcDot.setAttribute('cx', s.x)
+  srcDot.setAttribute('cy', s.y)
+  srcDot.setAttribute('r', isReal ? 4 : 3)
+  srcDot.setAttribute('fill', color)
+  srcDot.setAttribute('fill-opacity', '0.9')
 
-  // Fade out arc after 12 seconds
+  // Target pulse ring (animated)
+  const ring1 = document.createElementNS('http://www.w3.org/2000/svg', 'circle')
+  ring1.setAttribute('cx', t.x)
+  ring1.setAttribute('cy', t.y)
+  ring1.setAttribute('r', '4')
+  ring1.setAttribute('fill', 'none')
+  ring1.setAttribute('stroke', color)
+  ring1.setAttribute('stroke-width', '1.5')
+  ring1.style.animation = `pulse-ring 1.6s ease-out ${dur}ms 3 forwards`
+
+  const ring2 = document.createElementNS('http://www.w3.org/2000/svg', 'circle')
+  ring2.setAttribute('cx', t.x)
+  ring2.setAttribute('cy', t.y)
+  ring2.setAttribute('r', '4')
+  ring2.setAttribute('fill', 'none')
+  ring2.setAttribute('stroke', color)
+  ring2.setAttribute('stroke-width', '1')
+  ring2.style.animation = `pulse-ring 1.6s ease-out ${dur + 400}ms 2 forwards`
+
+  // Target dot
+  const tgtDot = document.createElementNS('http://www.w3.org/2000/svg', 'circle')
+  tgtDot.setAttribute('cx', t.x)
+  tgtDot.setAttribute('cy', t.y)
+  tgtDot.setAttribute('r', '3')
+  tgtDot.setAttribute('fill', color)
+  tgtDot.setAttribute('fill-opacity', '0.8')
+
+  g.append(glowPath, mainPath, srcDot, ring1, ring2, tgtDot)
+  svg().appendChild(g)
+
+  // Store for redraw + cleanup
+  state.svgArcs.push({ id: atk.id, el: g, atk, born: Date.now() })
+  if (state.svgArcs.length > CONFIG.MAX_ARCS) {
+    const old = state.svgArcs.shift()
+    old.el.remove()
+  }
+
+  // Fade out and remove after lifetime
   setTimeout(() => {
-    try { state.arcGroup.removeLayer(polyline) } catch {}
-    try { state.dotGroup.removeLayer(pulse) } catch {}
-  }, 12000)
-
-  // Keep arc list manageable
-  state.arcLayers.push(polyline)
-  if (state.arcLayers.length > CONFIG.MAX_ARCS) {
-    const old = state.arcLayers.shift()
-    try { state.arcGroup.removeLayer(old) } catch {}
-  }
+    g.style.transition = 'opacity 1s ease'
+    g.style.opacity    = '0'
+    setTimeout(() => {
+      g.remove()
+      state.svgArcs = state.svgArcs.filter(a => a.id !== atk.id)
+    }, 1000)
+  }, CONFIG.ARC_LIFETIME)
 }
 
-function interpolateArc(lat1, lng1, lat2, lng2, steps) {
-  const points = []
-  for (let i = 0; i <= steps; i++) {
-    const t = i / steps
-    const lat = lat1 + (lat2 - lat1) * t
-    const lng = lng1 + (lng2 - lng1) * t
-    // Add a slight curve by offsetting latitude mid-arc
-    const bulge = Math.sin(Math.PI * t) * Math.abs(lat2 - lat1) * 0.35
-    points.push([lat + bulge, lng])
-  }
-  return points
+// Reposition all existing arcs when map pans/zooms
+function redrawAllArcs() {
+  state.svgArcs.forEach(({ atk, el }) => {
+    const s = latLngToSVG(atk.src.lat, atk.src.lng)
+    const t = latLngToSVG(atk.tgt.lat, atk.tgt.lng)
+    const d = buildPath(s.x, s.y, t.x, t.y)
+
+    el.querySelectorAll('path').forEach(p => p.setAttribute('d', d))
+    el.querySelectorAll('circle').forEach(c => {
+      const isSrc = parseFloat(c.getAttribute('cx')) < 1000
+      // Determine which end this dot belongs to by comparing proximity
+    })
+
+    // Update all circles positions
+    const circles = el.querySelectorAll('circle')
+    if (circles[0]) { circles[0].setAttribute('cx', s.x); circles[0].setAttribute('cy', s.y) }
+    if (circles[1]) { circles[1].setAttribute('cx', t.x); circles[1].setAttribute('cy', t.y) }
+    if (circles[2]) { circles[2].setAttribute('cx', t.x); circles[2].setAttribute('cy', t.y) }
+    if (circles[3]) { circles[3].setAttribute('cx', t.x); circles[3].setAttribute('cy', t.y) }
+  })
 }
 
-function animateDot(points, color, atk) {
-  let step = 0
-  const totalSteps = points.length
-  const dot = L.circleMarker(points[0], {
-    radius: atk.source === 'otx' ? 4 : 3,
-    color,
-    weight: 0,
-    fillColor: color,
-    fillOpacity: 1,
-  }).addTo(state.dotGroup)
-
-  const interval = setInterval(() => {
-    step++
-    if (step >= totalSteps) {
-      clearInterval(interval)
-      try { state.dotGroup.removeLayer(dot) } catch {}
-      return
-    }
-    try { dot.setLatLng(points[step]) } catch {}
-  }, 28)
-}
-
-// ── Add attack event ─────────────────────────────────────────
+// ── Add a new attack ──────────────────────────────────────────
 function addAttack(atk) {
   state.attacks.unshift(atk)
   if (state.attacks.length > 100) state.attacks.pop()
@@ -376,12 +461,12 @@ function addAttack(atk) {
 const tsMap = new WeakMap()
 
 function addFeedRow(atk) {
-  const feed     = document.getElementById('feed-scroll')
-  const sevColor = SEV_COLOR[atk.severity]
-  const isReal   = atk.source === 'otx'
+  const feed   = document.getElementById('feed-scroll')
+  const isReal = atk.source === 'otx'
 
   const row = document.createElement('div')
   row.className = 'feed-row'
+  if (isReal) row.style.borderLeft = `2px solid ${atk.color}`
 
   row.innerHTML = `
     <div class="fr-top">
@@ -389,7 +474,7 @@ function addFeedRow(atk) {
         <span class="fr-dot" style="background:${atk.color}"></span>
         <span class="fr-type" style="color:${atk.color}">${atk.label}</span>
         <span class="fr-sev sev-${atk.severity}">${atk.severity}</span>
-        ${isReal ? '<span class="fr-real">● Live</span>' : ''}
+        ${isReal ? '<span class="fr-real">● Real</span>' : ''}
       </div>
       <span class="fr-time">just now</span>
     </div>
@@ -402,9 +487,11 @@ function addFeedRow(atk) {
         </div>
         <div class="fr-ip">${atk.src.ip}</div>
       </div>
-      <div class="fr-arrow">
-        <svg width="24" height="10" viewBox="0 0 24 10" fill="none">
-          <path d="M1 5H20M16 1L20 5L16 9" stroke="${atk.color}" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+      <div class="fr-arrow-icon">
+        <svg width="26" height="10" viewBox="0 0 26 10" fill="none">
+          <path d="M1 5H22M18 1.5L22 5L18 8.5"
+            stroke="${atk.color}" stroke-width="1.2"
+            stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
       </div>
       <div class="fr-side right">
@@ -419,7 +506,7 @@ function addFeedRow(atk) {
 
   feed.prepend(row)
   while (feed.children.length > CONFIG.MAX_FEED) feed.lastChild.remove()
-  document.getElementById('feed-count').textContent = `${feed.children.length} events`
+  document.getElementById('feed-count').textContent = feed.children.length
   tickTimestamps()
 }
 
@@ -427,15 +514,15 @@ function tickTimestamps() {
   document.querySelectorAll('.feed-row').forEach((row, i) => {
     const el = row.querySelector('.fr-time')
     if (!el) return
-    if (!tsMap.has(row)) tsMap.set(row, Date.now() - i * 800)
+    if (!tsMap.has(row)) tsMap.set(row, Date.now() - i * 750)
     const s = Math.floor((Date.now() - tsMap.get(row)) / 1000)
-    el.textContent = s < 5 ? 'just now' : s < 60 ? `${s}s ago` : `${Math.floor(s/60)}m ago`
+    el.textContent = s < 5 ? 'just now' : s < 60 ? `${s}s` : `${Math.floor(s/60)}m`
   })
 }
 
 setInterval(tickTimestamps, 5000)
 
-// ── Stats & counters ─────────────────────────────────────────
+// ── Stats ─────────────────────────────────────────────────────
 function updateCounters() {
   document.getElementById('total-count').textContent = totalCount.toLocaleString()
 
@@ -455,7 +542,7 @@ function updateRankList(elId, tally, barColor) {
   const entries = Object.entries(tally).sort((a,b) => b[1]-a[1]).slice(0,6)
   if (!entries.length) return
   const max = entries[0][1]
-  el.innerHTML = entries.map(([code,count], i) => {
+  el.innerHTML = entries.map(([code, count], i) => {
     const c = GEO.find(g => g.code === code)
     if (!c) return ''
     return `
@@ -479,13 +566,16 @@ function updateTypeList() {
   const total = Object.values(state.typeTally).reduce((a,b)=>a+b, 0)
   if (!total) return
   const sorted = [...ATTACK_TYPES].sort((a,b) => (state.typeTally[b.id]||0)-(state.typeTally[a.id]||0))
-  el.innerHTML = sorted.slice(0,7).map(t => {
+  el.innerHTML = sorted.slice(0,8).map(t => {
     const count = state.typeTally[t.id] || 0
     const pct   = Math.round((count/total)*100)
     return `
       <div class="type-row">
         <span class="type-dot" style="background:${t.color}"></span>
         <span class="type-name">${t.label}</span>
+        <div class="type-bar-wrap">
+          <div class="type-bar-fill" style="width:${pct}%;background:${t.color}"></div>
+        </div>
         <span class="type-pct">${pct}%</span>
       </div>
     `
@@ -493,8 +583,7 @@ function updateTypeList() {
 }
 
 function buildTypeStats() {
-  const el = document.getElementById('type-stats')
-  el.innerHTML = ATTACK_TYPES.map(t => `
+  document.getElementById('type-stats').innerHTML = ATTACK_TYPES.map(t => `
     <div class="ts-item">
       <span class="ts-dot" style="background:${t.color}"></span>
       <span class="ts-name">${t.label}</span>
@@ -510,17 +599,16 @@ function updateTypeStats() {
   })
 }
 
-// ── Filter chips ─────────────────────────────────────────────
+// ── Filter chips ──────────────────────────────────────────────
 function buildFilterChips() {
   const container = document.getElementById('filter-chips')
-  const allChip = makeChip('All', 'all', true)
-  container.appendChild(allChip)
+  container.appendChild(makeChip('All', 'all', true))
   ATTACK_TYPES.forEach(t => container.appendChild(makeChip(t.label, t.id, false)))
 }
 
 function makeChip(label, id, active) {
   const el = document.createElement('span')
-  el.className = `fchip${active ? ' active' : ''}`
+  el.className   = `fchip${active ? ' active' : ''}`
   el.textContent = label
   el.dataset.id  = id
   el.addEventListener('click', () => {
@@ -540,38 +628,36 @@ function updateClock() {
 setInterval(updateClock, 1000)
 updateClock()
 
-// ── Attack card (click popup) ─────────────────────────────────
+// ── Attack detail card ────────────────────────────────────────
 function showCard(atk) {
-  const sevColor = SEV_COLOR[atk.severity]
-  document.getElementById('ac-dot').style.background  = atk.color
-  document.getElementById('ac-type').textContent       = atk.label
-  document.getElementById('ac-type').style.color       = atk.color
-  document.getElementById('ac-sev').textContent        = atk.severity
-  document.getElementById('ac-sev').className          = `ac-sev sev-${atk.severity}`
-  document.getElementById('ac-src-flag').textContent   = atk.src.flag
+  document.getElementById('ac-dot').style.background    = atk.color
+  document.getElementById('ac-type').textContent        = atk.label
+  document.getElementById('ac-type').style.color        = atk.color
+  document.getElementById('ac-sev').textContent         = atk.severity
+  document.getElementById('ac-sev').className           = `ac-sev sev-${atk.severity}`
+  document.getElementById('ac-src-flag').textContent    = atk.src.flag
   document.getElementById('ac-src-country').textContent = atk.src.name
-  document.getElementById('ac-src-ip').textContent     = atk.src.ip
-  document.getElementById('ac-tgt-flag').textContent   = atk.tgt.flag
+  document.getElementById('ac-src-ip').textContent      = atk.src.ip
+  document.getElementById('ac-tgt-flag').textContent    = atk.tgt.flag
   document.getElementById('ac-tgt-country').textContent = atk.tgt.name
-  document.getElementById('ac-tgt-ip').textContent     = atk.tgt.ip
-  document.getElementById('ac-meta').textContent       = `Port: ${atk.port}  ·  ${atk.source === 'otx' ? '● Real threat data (OTX)' : 'Simulated event'}`
+  document.getElementById('ac-tgt-ip').textContent      = atk.tgt.ip
+  document.getElementById('ac-meta').textContent =
+    `Port ${atk.port}  ·  ${atk.source === 'otx' ? '● Verified threat (OTX)' : 'Simulated event'}`
   document.getElementById('attack-card').classList.remove('hidden')
 }
 
-window.closeCard = function() {
-  document.getElementById('attack-card').classList.add('hidden')
-}
+window.closeCard = () => document.getElementById('attack-card').classList.add('hidden')
 
-// ── Simulation loop ───────────────────────────────────────────
+// ── Sim loop ──────────────────────────────────────────────────
 function runSimLoop() {
   const atk = simulate()
   if (atk) addAttack(atk)
   setTimeout(runSimLoop, ri(CONFIG.SIM_MIN_MS, CONFIG.SIM_MAX_MS))
 }
 
-// ── Seed initial data ─────────────────────────────────────────
+// ── Seed initial attacks on load ──────────────────────────────
 function seedInitial() {
-  for (let i = 0; i < 18; i++) {
+  for (let i = 0; i < 20; i++) {
     const atk = simulate()
     if (!atk) continue
     state.attacks.push(atk)
@@ -590,14 +676,13 @@ window.addEventListener('load', () => {
   buildFilterChips()
   seedInitial()
 
-  // Seed arcs after a short delay so map is ready
   setTimeout(() => {
     state.attacks.forEach(atk => drawArc(atk))
     runSimLoop()
 
-    if (CONFIG.OTX_KEY !== 'YOUR_OTX_API_KEY_HERE') {
+    if (CONFIG.OTX_KEY && CONFIG.OTX_KEY !== 'YOUR_OTX_API_KEY_HERE') {
       pollOTX()
       setInterval(pollOTX, CONFIG.OTX_INTERVAL)
     }
-  }, 600)
+  }, 700)
 })

@@ -11,12 +11,15 @@
 </head>
 <body>
 
-  <!-- ── HEADER ─────────────────────────────────────────── -->
+  <!-- HEADER -->
   <header id="header">
     <div class="header-left">
       <div class="logo">
         <div class="logo-icon">
-          <span class="logo-dot"></span>
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M8 1L14 4.5V11.5L8 15L2 11.5V4.5L8 1Z" stroke="#3b82f6" stroke-width="1.2" fill="rgba(59,130,246,0.1)"/>
+            <circle cx="8" cy="8" r="2" fill="#3b82f6"/>
+          </svg>
         </div>
         <div class="logo-text">
           <span class="logo-name">Live-Hack</span>
@@ -43,7 +46,7 @@
       <div class="header-divider"></div>
       <div class="header-stat">
         <span class="hs-label">Per Minute</span>
-        <span class="hs-value blue" id="apm-count">—</span>
+        <span class="hs-value accent" id="apm-count">—</span>
       </div>
       <div class="header-divider"></div>
       <div class="clock-wrap">
@@ -53,29 +56,39 @@
     </div>
   </header>
 
-  <!-- ── MAIN LAYOUT ───────────────────────────────────── -->
+  <!-- LAYOUT -->
   <div id="layout">
 
     <!-- Left sidebar -->
     <aside id="sidebar">
+      <div class="sidebar-scroll">
+        <div class="sidebar-section">
+          <div class="section-title">
+            <span class="section-dot" style="background:#ef4444"></span>
+            Top Attackers
+          </div>
+          <div id="top-sources" class="rank-list"></div>
+        </div>
 
-      <div class="sidebar-section">
-        <div class="section-title">Top Attackers</div>
-        <div id="top-sources" class="rank-list"></div>
-      </div>
+        <div class="sidebar-sep"></div>
 
-      <div class="sidebar-sep"></div>
+        <div class="sidebar-section">
+          <div class="section-title">
+            <span class="section-dot" style="background:#3b82f6"></span>
+            Top Targets
+          </div>
+          <div id="top-targets" class="rank-list"></div>
+        </div>
 
-      <div class="sidebar-section">
-        <div class="section-title">Top Targets</div>
-        <div id="top-targets" class="rank-list"></div>
-      </div>
+        <div class="sidebar-sep"></div>
 
-      <div class="sidebar-sep"></div>
-
-      <div class="sidebar-section">
-        <div class="section-title">Attack Types</div>
-        <div id="type-list" class="type-list"></div>
+        <div class="sidebar-section">
+          <div class="section-title">
+            <span class="section-dot" style="background:#8b5cf6"></span>
+            Attack Vectors
+          </div>
+          <div id="type-list" class="type-list"></div>
+        </div>
       </div>
 
       <div class="sidebar-footer">
@@ -84,27 +97,46 @@
           <span class="footer-val green">247 Online</span>
         </div>
         <div class="footer-row">
-          <span class="footer-label">Data Feed</span>
+          <span class="footer-label">Data Source</span>
           <span class="footer-val blue" id="data-source">Simulated</span>
         </div>
         <div class="footer-row">
-          <span class="footer-label">Feed Latency</span>
-          <span class="footer-val">~2.1s</span>
+          <span class="footer-label">Latency</span>
+          <span class="footer-val muted">~2.1s</span>
         </div>
       </div>
     </aside>
 
-    <!-- Map -->
+    <!-- Map area -->
     <div id="map-wrap">
+      <!-- Leaflet map tiles -->
       <div id="map"></div>
 
-      <!-- Map overlay: attack type filter chips -->
+      <!-- SVG overlay for animated arcs — sits above the map -->
+      <svg id="arc-svg" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <filter id="glow-red">
+            <feGaussianBlur stdDeviation="2.5" result="blur"/>
+            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+          <filter id="glow-blue">
+            <feGaussianBlur stdDeviation="2.5" result="blur"/>
+            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+          <filter id="glow-any">
+            <feGaussianBlur stdDeviation="3" result="blur"/>
+            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+        </defs>
+      </svg>
+
+      <!-- Filter chips -->
       <div id="filter-bar">
         <span class="filter-label mono">Filter</span>
         <div id="filter-chips"></div>
       </div>
 
-      <!-- Map overlay: selected attack tooltip -->
+      <!-- Attack detail card -->
       <div id="attack-card" class="hidden">
         <div class="ac-header">
           <span class="ac-type-dot" id="ac-dot"></span>
@@ -118,7 +150,12 @@
             <div class="ac-country" id="ac-src-country"></div>
             <div class="ac-ip mono" id="ac-src-ip"></div>
           </div>
-          <div class="ac-arrow">→</div>
+          <div class="ac-arrow-wrap">
+            <svg width="40" height="14" viewBox="0 0 40 14" fill="none">
+              <path d="M2 7 Q20 2 38 7" stroke="#3b82f6" stroke-width="1.2" fill="none" stroke-dasharray="3 2"/>
+              <path d="M33 3.5 L38 7 L33 10.5" stroke="#3b82f6" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+            </svg>
+          </div>
           <div class="ac-side right">
             <div class="ac-flag" id="ac-tgt-flag"></div>
             <div class="ac-country" id="ac-tgt-country"></div>
@@ -129,25 +166,25 @@
       </div>
     </div>
 
-    <!-- Right panel: live feed -->
+    <!-- Right feed panel -->
     <aside id="feed-panel">
       <div class="feed-header">
         <div class="feed-title-row">
-          <span class="chip-dot red"></span>
+          <span class="chip-dot"></span>
           <span class="panel-title">Live Feed</span>
         </div>
-        <span class="feed-count mono" id="feed-count">0 events</span>
+        <span class="feed-count mono" id="feed-count">0</span>
       </div>
       <div id="feed-scroll"></div>
     </aside>
 
   </div>
 
-  <!-- ── BOTTOM BAR ───────────────────────────────────── -->
+  <!-- BOTTOM BAR -->
   <div id="bottom-bar">
     <div id="type-stats"></div>
     <div class="bottom-legend">
-      <span class="legend-label">Severity:</span>
+      <span class="legend-label">Severity</span>
       <div class="legend-item"><span class="ldot" style="background:#ef4444"></span>Critical</div>
       <div class="legend-item"><span class="ldot" style="background:#f97316"></span>High</div>
       <div class="legend-item"><span class="ldot" style="background:#eab308"></span>Medium</div>
