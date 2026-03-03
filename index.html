@@ -3,150 +3,159 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>LIVE-HACK · Global Cyber Threat Map</title>
+  <title>Live-Hack — Global Cyber Threat Map</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="style.css" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=Share+Tech+Mono&family=Rajdhani:wght@300;400;500;600&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
 </head>
 <body>
 
-  <!-- Globe renders here — fills entire viewport -->
-  <div id="globe-container"></div>
-
-  <!-- Scanline overlay -->
-  <div class="scanlines" aria-hidden="true"></div>
-
-  <!-- ─── TOP HEADER ─────────────────────────────────── -->
-  <header id="topbar">
-    <div class="brand">
-      <svg class="brand-icon" width="30" height="30" viewBox="0 0 30 30" fill="none">
-        <polygon points="15,2 28,8.5 28,21.5 15,28 2,21.5 2,8.5" stroke="#00e5ff" stroke-width="1.2" fill="rgba(0,229,255,0.05)"/>
-        <polygon points="15,8 22,11.5 22,18.5 15,22 8,18.5 8,11.5" stroke="rgba(0,229,255,0.35)" stroke-width="0.8" fill="none"/>
-        <circle cx="15" cy="15" r="3" fill="#ff1e2d"/>
-        <circle cx="15" cy="15" r="3" fill="#ff1e2d" class="ping-circle"/>
-      </svg>
-      <div class="brand-text">
-        <span class="brand-name orbitron" data-text="LIVE-HACK">LIVE-HACK</span>
-        <span class="brand-sub mono">GLOBAL THREAT INTELLIGENCE</span>
+  <!-- ── HEADER ─────────────────────────────────────────── -->
+  <header id="header">
+    <div class="header-left">
+      <div class="logo">
+        <div class="logo-icon">
+          <span class="logo-dot"></span>
+        </div>
+        <div class="logo-text">
+          <span class="logo-name">Live-Hack</span>
+          <span class="logo-sub">Cyber Threat Intelligence</span>
+        </div>
       </div>
-      <div class="live-badge">
-        <span class="pulse-dot"></span>
-        <span class="mono">LIVE</span>
+      <div class="live-chip">
+        <span class="chip-dot"></span>
+        <span>Live</span>
       </div>
     </div>
 
-    <div class="topbar-right">
+    <nav class="header-center">
+      <span class="nav-item active">Threat Map</span>
+      <span class="nav-item">Analytics</span>
+      <span class="nav-item">Reports</span>
+    </nav>
+
+    <div class="header-right">
       <div class="header-stat">
-        <span class="mono stat-label">TOTAL ATTACKS</span>
-        <span class="orbitron stat-value red" id="total-counter">0</span>
+        <span class="hs-label">Total Attacks</span>
+        <span class="hs-value" id="total-count">—</span>
       </div>
-      <div class="divider-v"></div>
+      <div class="header-divider"></div>
       <div class="header-stat">
-        <span class="mono stat-label">ATTACKS/MIN</span>
-        <span class="orbitron stat-value amber" id="apm-counter">0</span>
+        <span class="hs-label">Per Minute</span>
+        <span class="hs-value blue" id="apm-count">—</span>
       </div>
-      <div class="divider-v"></div>
-      <span class="mono clock" id="utc-clock">00:00:00 UTC</span>
-      <div id="data-source-badge" class="mono" style="font-size:8px;padding:3px 8px;border:1px solid rgba(0,229,255,0.2);color:rgba(0,229,255,0.5);letter-spacing:.12em">⬡ SIMULATED</div>
-      <div class="online-badge">
-        <span class="dot-green"></span>
-        <span class="mono">ONLINE</span>
+      <div class="header-divider"></div>
+      <div class="clock-wrap">
+        <span class="clock-label">UTC</span>
+        <span class="clock-val mono" id="utc-clock">00:00:00</span>
       </div>
     </div>
   </header>
 
-  <!-- ─── LEFT PANEL ─────────────────────────────────── -->
-  <aside id="left-panel" class="hud-panel">
-    <div class="panel-header">
-      <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-        <polygon points="5,1 9,3 9,7 5,9 1,7 1,3" stroke="#00e5ff" stroke-width="0.8" fill="none"/>
-      </svg>
-      <span class="mono panel-title">COUNTRY INTEL</span>
-    </div>
+  <!-- ── MAIN LAYOUT ───────────────────────────────────── -->
+  <div id="layout">
 
-    <div class="panel-body">
-      <div class="rank-section">
-        <div class="rank-label mono">▲ TOP ATTACKERS</div>
-        <div id="top-sources" class="rank-list">
-          <div class="rank-skeleton" data-i="1"></div>
-          <div class="rank-skeleton" data-i="2"></div>
-          <div class="rank-skeleton" data-i="3"></div>
-          <div class="rank-skeleton" data-i="4"></div>
-          <div class="rank-skeleton" data-i="5"></div>
+    <!-- Left sidebar -->
+    <aside id="sidebar">
+
+      <div class="sidebar-section">
+        <div class="section-title">Top Attackers</div>
+        <div id="top-sources" class="rank-list"></div>
+      </div>
+
+      <div class="sidebar-sep"></div>
+
+      <div class="sidebar-section">
+        <div class="section-title">Top Targets</div>
+        <div id="top-targets" class="rank-list"></div>
+      </div>
+
+      <div class="sidebar-sep"></div>
+
+      <div class="sidebar-section">
+        <div class="section-title">Attack Types</div>
+        <div id="type-list" class="type-list"></div>
+      </div>
+
+      <div class="sidebar-footer">
+        <div class="footer-row">
+          <span class="footer-label">Sensor Nodes</span>
+          <span class="footer-val green">247 Online</span>
+        </div>
+        <div class="footer-row">
+          <span class="footer-label">Data Feed</span>
+          <span class="footer-val blue" id="data-source">Simulated</span>
+        </div>
+        <div class="footer-row">
+          <span class="footer-label">Feed Latency</span>
+          <span class="footer-val">~2.1s</span>
         </div>
       </div>
+    </aside>
 
-      <div class="panel-sep"></div>
+    <!-- Map -->
+    <div id="map-wrap">
+      <div id="map"></div>
 
-      <div class="rank-section">
-        <div class="rank-label mono">▼ TOP TARGETS</div>
-        <div id="top-targets" class="rank-list">
-          <div class="rank-skeleton" data-i="1"></div>
-          <div class="rank-skeleton" data-i="2"></div>
-          <div class="rank-skeleton" data-i="3"></div>
-          <div class="rank-skeleton" data-i="4"></div>
-          <div class="rank-skeleton" data-i="5"></div>
+      <!-- Map overlay: attack type filter chips -->
+      <div id="filter-bar">
+        <span class="filter-label mono">Filter</span>
+        <div id="filter-chips"></div>
+      </div>
+
+      <!-- Map overlay: selected attack tooltip -->
+      <div id="attack-card" class="hidden">
+        <div class="ac-header">
+          <span class="ac-type-dot" id="ac-dot"></span>
+          <span class="ac-type" id="ac-type"></span>
+          <span class="ac-sev" id="ac-sev"></span>
+          <button class="ac-close" onclick="closeCard()">✕</button>
         </div>
+        <div class="ac-route">
+          <div class="ac-side">
+            <div class="ac-flag" id="ac-src-flag"></div>
+            <div class="ac-country" id="ac-src-country"></div>
+            <div class="ac-ip mono" id="ac-src-ip"></div>
+          </div>
+          <div class="ac-arrow">→</div>
+          <div class="ac-side right">
+            <div class="ac-flag" id="ac-tgt-flag"></div>
+            <div class="ac-country" id="ac-tgt-country"></div>
+            <div class="ac-ip mono" id="ac-tgt-ip"></div>
+          </div>
+        </div>
+        <div class="ac-meta mono" id="ac-meta"></div>
       </div>
+    </div>
 
-      <div class="panel-sep"></div>
-
-      <div class="rank-section">
-        <div class="rank-label mono">⬡ ATTACK VECTORS</div>
-        <div id="type-breakdown" class="type-list"></div>
+    <!-- Right panel: live feed -->
+    <aside id="feed-panel">
+      <div class="feed-header">
+        <div class="feed-title-row">
+          <span class="chip-dot red"></span>
+          <span class="panel-title">Live Feed</span>
+        </div>
+        <span class="feed-count mono" id="feed-count">0 events</span>
       </div>
-    </div>
+      <div id="feed-scroll"></div>
+    </aside>
 
-    <div class="panel-footer mono">
-      <div>SENSORS <span class="green">247 ACTIVE</span></div>
-      <div>LATENCY <span class="amber">~2.1s</span></div>
-      <div>FEED <span class="cyan">NOMINAL</span></div>
-    </div>
-  </aside>
+  </div>
 
-  <!-- ─── RIGHT PANEL ─────────────────────────────────── -->
-  <aside id="right-panel" class="hud-panel">
-    <div class="panel-header">
-      <span class="pulse-dot"></span>
-      <span class="mono panel-title">LIVE ATTACK FEED</span>
-      <span class="mono feed-count" id="feed-count">0</span>
-    </div>
-    <div id="attack-feed" class="feed-scroll"></div>
-  </aside>
-
-  <!-- ─── BOTTOM BAR ──────────────────────────────────── -->
+  <!-- ── BOTTOM BAR ───────────────────────────────────── -->
   <div id="bottom-bar">
-    <div class="bottom-inner">
-      <div class="bottom-brand">
-        <div class="mono" style="font-size:8px;color:var(--muted);letter-spacing:.14em;margin-bottom:3px">SENSOR NETWORK</div>
-        <div class="orbitron" style="font-size:12px;color:var(--cyan);font-weight:700">247 NODES</div>
-      </div>
-      <div id="type-counters" class="type-counters"></div>
-      <div class="bottom-legend">
-        <div class="mono legend-title">SEVERITY</div>
-        <div class="legend-items">
-          <div class="legend-item"><span class="dot" style="background:#ff1e2d;box-shadow:0 0 5px #ff1e2d"></span><span class="mono">CRITICAL</span></div>
-          <div class="legend-item"><span class="dot" style="background:#ff6200;box-shadow:0 0 5px #ff6200"></span><span class="mono">HIGH</span></div>
-          <div class="legend-item"><span class="dot" style="background:#ffaa00;box-shadow:0 0 5px #ffaa00"></span><span class="mono">MEDIUM</span></div>
-          <div class="legend-item"><span class="dot" style="background:#00ff88;box-shadow:0 0 5px #00ff88"></span><span class="mono">LOW</span></div>
-        </div>
-      </div>
+    <div id="type-stats"></div>
+    <div class="bottom-legend">
+      <span class="legend-label">Severity:</span>
+      <div class="legend-item"><span class="ldot" style="background:#ef4444"></span>Critical</div>
+      <div class="legend-item"><span class="ldot" style="background:#f97316"></span>High</div>
+      <div class="legend-item"><span class="ldot" style="background:#eab308"></span>Medium</div>
+      <div class="legend-item"><span class="ldot" style="background:#22c55e"></span>Low</div>
     </div>
   </div>
 
-  <!-- ─── ATTACK TOOLTIP ─────────────────────────────── -->
-  <div id="tooltip" class="tooltip hidden">
-    <div class="tooltip-type mono" id="tt-type"></div>
-    <div class="tooltip-route" id="tt-route"></div>
-    <div class="tooltip-detail mono" id="tt-detail"></div>
-  </div>
-
-  <!-- Status toast -->
-  <div id="status-toast" class="mono" style="position:fixed;bottom:72px;left:50%;transform:translateX(-50%);z-index:200;background:rgba(2,10,18,0.92);border:1px solid rgba(0,229,255,0.2);padding:6px 16px;font-size:9px;color:rgba(0,229,255,0.6);letter-spacing:.1em;opacity:0;transition:opacity .4s;pointer-events:none;white-space:nowrap"></div>
-
-  <!-- Globe.gl from CDN -->
-  <script src="https://unpkg.com/globe.gl@2.32.1/dist/globe.gl.min.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="script.js"></script>
 </body>
 </html>
