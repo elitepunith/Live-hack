@@ -1,15 +1,3 @@
-// ─────────────────────────────────────────────────────────────
-//  Live-Hack · script.js
-//
-//  Free APIs used:
-//  · AlienVault OTX  → real malicious IPs (free key required)
-//    Sign up: https://otx.alienvault.com/
-//    Settings → API Key → paste below
-//
-//  · ip-api.com      → geolocate the real IPs (no key needed)
-//    https://ip-api.com/docs/api:batch
-// ─────────────────────────────────────────────────────────────
-
 const CONFIG = {
   OTX_KEY:      '45767dabedb31cf712af5df63ac8d1765fd85a4cc88d01f0b9f9216b95df5884',
   OTX_INTERVAL: 30000,
