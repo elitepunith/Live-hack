@@ -113,22 +113,7 @@
       <div id="map"></div>
 
       <!-- SVG overlay for animated arcs — sits above the map -->
-      <svg id="arc-svg" xmlns="http://www.w3.org/2000/svg">
-        <defs>
-          <filter id="glow-red">
-            <feGaussianBlur stdDeviation="2.5" result="blur"/>
-            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
-          </filter>
-          <filter id="glow-blue">
-            <feGaussianBlur stdDeviation="2.5" result="blur"/>
-            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
-          </filter>
-          <filter id="glow-any">
-            <feGaussianBlur stdDeviation="3" result="blur"/>
-            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
-          </filter>
-        </defs>
-      </svg>
+      <svg id="arc-svg" xmlns="http://www.w3.org/2000/svg"></svg>
 
       <!-- Filter chips -->
       <div id="filter-bar">
