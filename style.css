@@ -139,7 +139,7 @@ html, body {
 }
 
 /* Nav */
-.header-stats-center { display: flex; align-items: center; gap: 20px; }
+.header-center { display: flex; align-items: center; gap: 20px; }
 
 .nav-item {
   padding: 5px 12px;
