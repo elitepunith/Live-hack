@@ -1,81 +1,45 @@
 # Live-Hack
 
-A real-time cyber threat intelligence dashboard that visualizes active attacks across the world on an interactive map. Attack arcs animate from the attacker's origin to the target country, updating continuously as new events come in.
+## What is this project?
 
-Built with plain HTML, CSS, and JavaScript. No frameworks, no build step, no backend. Drop the three files in a folder and open index.html.
+Live-Hack is a web visualization that shows cyberattacks happening around the world in real time. Animated lines travel across a world map from the attacker’s location to the target country while a live feed displays details like malicious IP addresses and attack types.
 
----
+I built this project to explore threat intelligence data and cybersecurity visualization. The goal was to create something that looks like a hacker-movie attack map but is powered by real threat intelligence data.
 
-## What it does
+## How to run it
 
-The map shows live cyberattacks as animated arcs flying between countries. Each arc represents a real or simulated attack event, color-coded by type. A live feed on the right logs every event with the source IP, target IP, attack classification, and severity. The left sidebar ranks the top attacking and targeted countries in real time.
+1. Clone this repository
 
-When an AlienVault OTX API key is configured, the dashboard pulls real threat intelligence data — actual malicious IPs reported by the global security community — and geolocates them using ip-api.com. Without a key, a weighted simulation engine keeps the map active using realistic attack patterns based on known threat actor geography.
+git clone https://github.com/elitepunith/Kotoba.git
 
----
+2. Open the project folder.
 
-## Data sources
+3. Open `index.html` in your browser.
 
-AlienVault OTX is a free threat intelligence platform run by AT&T Cybersecurity. It aggregates indicators of compromise from security researchers worldwide. This project uses it to pull active threat pulses and extract malicious IPv4 addresses.
+### Optional – Use Real Threat Data
 
-ip-api.com is a free IP geolocation API that requires no key. It resolves IP addresses to country and coordinates. The dashboard uses it to place real attacker IPs on the map.
+If you want real attack data:
 
----
+1. Create a free account on AlienVault OTX  
+2. Get your OTX API key  
+3. Add the key in the script configuration file.
 
-## Getting started
+## What I learned
 
-Clone or download the repository, then open index.html directly in a browser. No installation required.
+While building this project, I learned:
 
-To enable real threat data, get a free API key from otx.alienvault.com, then open script.js and replace the placeholder at the top of the file:
+- How to use threat intelligence APIs to retrieve malicious IP data
+- How to convert IP addresses into geographic coordinates
+- How to visualize cyber activity using map animations and JavaScript
+- Handling real-time data updates efficiently in the browser
 
-    OTX_KEY: 'your-key-here',
+One of the biggest challenges was mapping IP data to real locations and animating attack paths smoothly across the map.
 
-Once set, the dashboard fetches live threat pulses every 30 seconds. Real events appear with a green indicator in the feed.
+## Known issues
 
----
-
-## Attack types tracked
-
-DDoS, Ransomware, Malware C2, Zero-Day Exploit, Brute Force, SQL Injection, Phishing, Port Scan, XSS, Man-in-the-Middle
-
----
-
-## Tech stack
-
-- Leaflet.js for the interactive map
-- CartoDB dark tile layer
-- SVG overlay for animated attack arcs
-- AlienVault OTX API for real threat intelligence
-- ip-api.com for IP geolocation
-- Vanilla JavaScript
-
----
-
-## Deployment
-
-The project is a static site and can be deployed anywhere that serves HTML files.
-
-To deploy on Vercel, push the repository to GitHub and import it at vercel.com. Vercel detects a static project automatically with no configuration needed.
-
-Live demo: https://live-hack-swart.vercel.app
-
----
-
-## Project structure
-
-    index.html    Page structure and layout
-    style.css     All styling and animations
-    script.js     Map logic, simulation engine, API integration
-
----
-
-## Notes
-
-Simulation mode uses weighted randomization based on real-world threat actor patterns. China, Russia, North Korea, and Iran appear more frequently as source countries, while the United States, United Kingdom, and Germany are weighted higher as targets. This reflects actual trends in reported cybersecurity incidents.
-
-All IP addresses shown in simulation mode are randomly generated within real IP ranges for those countries. No actual network traffic is generated or intercepted.
-
----
+- IP geolocation is not always accurate, so attack locations are approximate
+- Performance may slow down if too many attacks appear at once
+- Some threat intelligence data may contain duplicates or outdated entries
 
 ## License
 
