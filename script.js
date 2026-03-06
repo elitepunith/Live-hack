@@ -324,7 +324,6 @@ var state = {
   typeTally:{},
   filter:   'all',
   map:      null,
-  zooming:  false,  // true while a zoom animation is happening
 };
 
 for (var i = 0; i < ATTACK_TYPES.length; i++) {
@@ -333,17 +332,23 @@ for (var i = 0; i < ATTACK_TYPES.length; i++) {
 
 
 // -- map setup --
-// The big change: we put our SVG inside leaflet's own overlay pane
-// so it moves with the map automatically. No more offset problems.
+// The map is fully static — no zoom, no pan. Since it never moves,
+// latLngToContainerPoint() always gives correct pixel coords for arcs.
 
 function initMap() {
   var map = L.map('map', {
-    center: [22, 10],
-    zoom: 3,
-    zoomControl: true,
+    center: [25, 10],
+    zoom: 2,
+    zoomControl: false,
     attributionControl: false,
+    dragging: false,
+    touchZoom: false,
+    scrollWheelZoom: false,
+    doubleClickZoom: false,
+    boxZoom: false,
+    keyboard: false,
     minZoom: 2,
-    maxZoom: 8,
+    maxZoom: 2,
   });
 
   L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png', {
@@ -353,29 +358,7 @@ function initMap() {
 
   state.map = map;
 
-  // move our arc-svg element into leaflet's overlay pane so it
-  // transforms together with the map during pan/zoom
-  var arcSvg = document.getElementById('arc-svg');
-  var overlayPane = map.getPanes().overlayPane;
-  overlayPane.appendChild(arcSvg);
-
-  // track zoom animation so we don't draw arcs mid-zoom
-  // (latLngToLayerPoint gives wrong coords during the animation)
-  map.on('zoomstart', function() {
-    state.zooming = true;
-  });
-
-  // once zoom finishes, update everything
-  map.on('zoomend', function() {
-    state.zooming = false;
-    redrawArcs();
-  });
-
-  // also redraw on pan end
-  map.on('moveend', function() {
-    if (!state.zooming) redrawArcs();
-  });
-
+  // redraw arcs whenever the container is resized
   window.addEventListener('resize', function() {
     map.invalidateSize();
     redrawArcs();
@@ -384,17 +367,14 @@ function initMap() {
 
 
 // -- SVG arc drawing --
-// switched from latLngToContainerPoint to latLngToLayerPoint
-// because the SVG now lives inside the leaflet overlay pane,
-// which uses layer coordinates not container coordinates.
 
 function getSVG() {
   return document.getElementById('arc-svg');
 }
 
-// convert lat/lng to pixel coords in leaflet's layer space
+// convert lat/lng to pixel coords relative to the map container
 function latLngToXY(lat, lng) {
-  var pt = state.map.latLngToLayerPoint([lat, lng]);
+  var pt = state.map.latLngToContainerPoint([lat, lng]);
   return [pt.x, pt.y];
 }
 
@@ -434,7 +414,6 @@ function measurePath(x1, y1, x2, y2) {
 
 function drawArc(atk) {
   if (state.filter !== 'all' && atk.type !== state.filter) return;
-  if (state.zooming) return; // don't draw while zoom is animating
 
   var svg = getSVG();
   if (!svg || !state.map) return;
@@ -566,9 +545,7 @@ function removeArcById(id) {
   }
 }
 
-// redraw all arcs after pan/zoom finishes
-// since the SVG is now inside leaflet's overlay pane, the coordinate
-// system changes after zoom — we need to recalculate every position
+// redraw all arcs — called on window resize to keep positions correct
 function redrawArcs() {
   if (!state.map) return;
 
