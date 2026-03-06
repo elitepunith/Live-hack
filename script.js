@@ -1,12 +1,11 @@
 var CONFIG = {
-  // REMOVED the hardcoded API key - put yours here locally, never commit it
   OTX_KEY:      '',
   OTX_INTERVAL: 30000,
   SIM_MIN_MS:   900,
   SIM_MAX_MS:   2500,
-  MAX_ARCS:     40,       // lowered from 55 — less SVG pressure
-  MAX_FEED:     50,       // lowered from 80 — less DOM nodes sitting around
-  ARC_LIFE:     10000,    // shortened from 13s so arcs cycle out faster
+  MAX_ARCS:     35,
+  MAX_FEED:     50,
+  ARC_LIFE:     10000,
 };
 
 // country coords for placing dots on the map
@@ -53,7 +52,7 @@ var GEO = [
   { code:'CZ', name:'Czech Rep.',     lat:49.81,  lng:15.47,   flag:'🇨🇿' },
 ];
 
-// build a lookup table so we stop calling .find() on every event
+// hash map so we don't .find() every time
 var geoByCode = {};
 for (var i = 0; i < GEO.length; i++) {
   geoByCode[GEO[i].code] = GEO[i];
@@ -72,7 +71,7 @@ var ATTACK_TYPES = [
   { id:'mitm',       label:'MITM',        color:'#22c55e', severity:'high',     weight:3,  ports:[80,443]         },
 ];
 
-// total weight computed once, not on every call
+// sum it once so pickType doesn't recompute
 var TOTAL_TYPE_WEIGHT = 0;
 for (var i = 0; i < ATTACK_TYPES.length; i++) {
   TOTAL_TYPE_WEIGHT += ATTACK_TYPES[i].weight;
@@ -107,7 +106,6 @@ var IP_POOLS = {
 
 // -- helpers --
 
-// pick a random key from a weight map
 function weighted(map) {
   var keys = Object.keys(map);
   var vals = Object.values(map);
@@ -121,7 +119,6 @@ function weighted(map) {
   return keys[keys.length - 1];
 }
 
-// pick a random attack type based on its weight
 function pickType() {
   var r = Math.random() * TOTAL_TYPE_WEIGHT;
   for (var i = 0; i < ATTACK_TYPES.length; i++) {
@@ -131,27 +128,23 @@ function pickType() {
   return ATTACK_TYPES[0];
 }
 
-// random int between a and b inclusive
 function ri(a, b) {
   return Math.floor(Math.random() * (b - a + 1)) + a;
 }
 
-// small random offset so dots don't stack exactly
+// small jitter so markers don't stack
 function jit() {
   return (Math.random() - 0.5) * 2.5;
 }
 
-// lookup country by code — uses the hash map now instead of .find()
 function byCode(c) {
   return geoByCode[c] || null;
 }
 
-// pick a random country from the list
 function randGeo() {
   return GEO[Math.floor(Math.random() * GEO.length)];
 }
 
-// generate a fake IP for a country code
 function fakeIP(code) {
   var pool = IP_POOLS[code] || IP_POOLS._;
   return pool[Math.floor(Math.random() * pool.length)] + '.' + ri(1,253) + '.' + ri(1,253);
@@ -162,12 +155,11 @@ var totalCount = ri(160000, 220000);
 var perMinBucket = [];
 
 
-// -- simulation: build a fake attack event --
+// -- simulation --
 
 function simulate() {
   var srcCode = weighted(SRC_WEIGHTS);
   var tgtCode;
-  // make sure source and target are different countries
   do { tgtCode = weighted(TGT_WEIGHTS); } while (tgtCode === srcCode);
 
   var src = byCode(srcCode);
@@ -192,7 +184,7 @@ function simulate() {
 }
 
 
-// -- OTX integration --
+// -- OTX stuff --
 
 var otxSeen = new Set();
 var geoCache = {};
@@ -215,11 +207,10 @@ async function geolocateIPs(ips) {
       }
     }
   } catch(err) {
-    // network issue, just skip this batch
+    // skip it
   }
 }
 
-// try to figure out what kind of attack a pulse is based on keywords
 function typeFromPulse(pulse) {
   var hay = [pulse.name||'', pulse.description||''].concat(pulse.tags||[]).concat(pulse.malware_families||[]).join(' ').toLowerCase();
   var keys = Object.keys(OTX_TYPE_MAP);
@@ -235,7 +226,6 @@ function typeFromPulse(pulse) {
   return pickType();
 }
 
-// convert an OTX pulse into attack events we can display
 async function pulseToAttacks(pulse) {
   var indicators = (pulse.indicators || []);
   var inds = [];
@@ -328,21 +318,23 @@ async function pollOTX() {
 
 var state = {
   attacks:  [],
-  svgArcs:  [],   // { id, el, atk, born, timeout }
+  svgArcs:  [],
   srcTally: {},
   tgtTally: {},
   typeTally:{},
   filter:   'all',
   map:      null,
+  zooming:  false,  // true while a zoom animation is happening
 };
 
-// init type tallies to zero
 for (var i = 0; i < ATTACK_TYPES.length; i++) {
   state.typeTally[ATTACK_TYPES[i].id] = 0;
 }
 
 
 // -- map setup --
+// The big change: we put our SVG inside leaflet's own overlay pane
+// so it moves with the map automatically. No more offset problems.
 
 function initMap() {
   var map = L.map('map', {
@@ -361,8 +353,29 @@ function initMap() {
 
   state.map = map;
 
-  // redraw arcs when the user finishes panning or zooming
-  map.on('moveend zoomend', redrawArcs);
+  // move our arc-svg element into leaflet's overlay pane so it
+  // transforms together with the map during pan/zoom
+  var arcSvg = document.getElementById('arc-svg');
+  var overlayPane = map.getPanes().overlayPane;
+  overlayPane.appendChild(arcSvg);
+
+  // track zoom animation so we don't draw arcs mid-zoom
+  // (latLngToLayerPoint gives wrong coords during the animation)
+  map.on('zoomstart', function() {
+    state.zooming = true;
+  });
+
+  // once zoom finishes, update everything
+  map.on('zoomend', function() {
+    state.zooming = false;
+    redrawArcs();
+  });
+
+  // also redraw on pan end
+  map.on('moveend', function() {
+    if (!state.zooming) redrawArcs();
+  });
+
   window.addEventListener('resize', function() {
     map.invalidateSize();
     redrawArcs();
@@ -370,28 +383,28 @@ function initMap() {
 }
 
 
-// -- SVG arc rendering --
-// THIS IS WHERE THE MAIN BUGS WERE.
-// The old code set strokeDasharray/strokeDashoffset once and never updated
-// them on redraw, causing arcs to look frozen after camera moves.
-// Also, old arcs piled up because the timeout cleanup was unreliable.
+// -- SVG arc drawing --
+// switched from latLngToContainerPoint to latLngToLayerPoint
+// because the SVG now lives inside the leaflet overlay pane,
+// which uses layer coordinates not container coordinates.
 
 function getSVG() {
   return document.getElementById('arc-svg');
 }
 
+// convert lat/lng to pixel coords in leaflet's layer space
 function latLngToXY(lat, lng) {
-  var pt = state.map.latLngToContainerPoint([lat, lng]);
+  var pt = state.map.latLngToLayerPoint([lat, lng]);
   return [pt.x, pt.y];
 }
 
+// build a quadratic bezier curve between two screen points
 function buildCurve(x1, y1, x2, y2) {
   var mx = (x1 + x2) / 2;
   var my = (y1 + y2) / 2;
   var dx = x2 - x1;
   var dy = y2 - y1;
   var dist = Math.sqrt(dx * dx + dy * dy);
-  // avoid division by zero if points overlap
   if (dist < 1) dist = 1;
   var lift = Math.min(dist * 0.38, 200);
   var nx = -dy / dist;
@@ -399,16 +412,8 @@ function buildCurve(x1, y1, x2, y2) {
   return 'M ' + x1 + ' ' + y1 + ' Q ' + (mx + nx*lift) + ' ' + (my + ny*lift) + ' ' + x2 + ' ' + y2;
 }
 
-// calculate the approximate length of a quadratic bezier so dash values are accurate
-function approxQuadLength(x1, y1, cx, cy, x2, y2) {
-  // simple chord+control estimate, good enough for dash animation
-  var chord = Math.sqrt((x2-x1)*(x2-x1) + (y2-y1)*(y2-y1));
-  var cont  = Math.sqrt((x1-cx)*(x1-cx) + (y1-cy)*(y1-cy)) + Math.sqrt((cx-x2)*(cx-x2) + (cy-y2)*(cy-y2));
-  return (chord + cont) / 2;
-}
-
-// parse the control point back out of a path "d" string so we can measure it
-function getPathLength(x1, y1, x2, y2) {
+// rough path length estimate for setting dash values
+function measurePath(x1, y1, x2, y2) {
   var mx = (x1 + x2) / 2;
   var my = (y1 + y2) / 2;
   var dx = x2 - x1;
@@ -420,12 +425,16 @@ function getPathLength(x1, y1, x2, y2) {
   var ny = dx / dist;
   var cx = mx + nx * lift;
   var cy = my + ny * lift;
-  return approxQuadLength(x1, y1, cx, cy, x2, y2);
+  // average of the chord and the two control legs
+  var chord = Math.sqrt((x2-x1)*(x2-x1) + (y2-y1)*(y2-y1));
+  var legs  = Math.sqrt((x1-cx)*(x1-cx) + (y1-cy)*(y1-cy))
+            + Math.sqrt((cx-x2)*(cx-x2) + (cy-y2)*(cy-y2));
+  return (chord + legs) / 2;
 }
 
 function drawArc(atk) {
-  // respect the active filter
   if (state.filter !== 'all' && atk.type !== state.filter) return;
+  if (state.zooming) return; // don't draw while zoom is animating
 
   var svg = getSVG();
   if (!svg || !state.map) return;
@@ -436,42 +445,42 @@ function drawArc(atk) {
   var tx = tgtPt[0], ty = tgtPt[1];
 
   var d = buildCurve(sx, sy, tx, ty);
-  var pathLen = getPathLength(sx, sy, tx, ty);
+  var pathLen = measurePath(sx, sy, tx, ty);
+  if (pathLen < 5) return; // skip if points are basically on top of each other
 
   var isReal  = (atk.source === 'otx');
   var color   = atk.color;
   var weight  = isReal ? 1.8 : 1.2;
-  var animDur = 1000 + Math.random() * 500;
+  var animMs  = 1000 + Math.random() * 500;
 
-  // group element holds all parts of one arc
   var g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
   g.setAttribute('data-id', atk.id);
 
-  // glow effect behind the main line
+  // glow line (no blur filter — way cheaper on the GPU)
   var glow = document.createElementNS('http://www.w3.org/2000/svg', 'path');
   glow.setAttribute('d', d);
   glow.setAttribute('stroke', color);
-  glow.setAttribute('stroke-width', weight + 3);
-  glow.setAttribute('stroke-opacity', '0.18');
+  glow.setAttribute('stroke-width', weight + 2);
+  glow.setAttribute('stroke-opacity', '0.12');
   glow.setAttribute('fill', 'none');
-  glow.setAttribute('filter', 'url(#glow-any)');
+  // start hidden, we'll reveal it with JS transition
   glow.style.strokeDasharray  = pathLen;
   glow.style.strokeDashoffset = pathLen;
-  glow.style.animation = 'arc-travel ' + animDur + 'ms cubic-bezier(0.4,0,0.2,1) forwards';
+  glow.style.transition = 'stroke-dashoffset ' + animMs + 'ms cubic-bezier(0.4,0,0.2,1)';
 
-  // the visible arc line
+  // main visible arc
   var arc = document.createElementNS('http://www.w3.org/2000/svg', 'path');
   arc.setAttribute('d', d);
   arc.setAttribute('stroke', color);
   arc.setAttribute('stroke-width', weight);
-  arc.setAttribute('stroke-opacity', isReal ? '0.9' : '0.65');
+  arc.setAttribute('stroke-opacity', isReal ? '0.85' : '0.6');
   arc.setAttribute('stroke-linecap', 'round');
   arc.setAttribute('fill', 'none');
   arc.style.strokeDasharray  = pathLen;
   arc.style.strokeDashoffset = pathLen;
-  arc.style.animation = 'arc-travel ' + animDur + 'ms cubic-bezier(0.4,0,0.2,1) forwards';
+  arc.style.transition = 'stroke-dashoffset ' + animMs + 'ms cubic-bezier(0.4,0,0.2,1)';
 
-  // dot at the source location
+  // source dot
   var srcDot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
   srcDot.setAttribute('cx', sx);
   srcDot.setAttribute('cy', sy);
@@ -479,7 +488,7 @@ function drawArc(atk) {
   srcDot.setAttribute('fill', color);
   srcDot.setAttribute('fill-opacity', '0.9');
 
-  // expanding ring at the target
+  // pulse ring at target
   var ring = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
   ring.setAttribute('cx', tx);
   ring.setAttribute('cy', ty);
@@ -487,9 +496,9 @@ function drawArc(atk) {
   ring.setAttribute('fill', 'none');
   ring.setAttribute('stroke', color);
   ring.setAttribute('stroke-width', '2');
-  ring.style.animation = 'pulse-ring 1.5s ease-out ' + animDur + 'ms 3 forwards';
+  ring.style.animation = 'pulse-ring 1.5s ease-out ' + animMs + 'ms 3 forwards';
 
-  // solid dot at the target
+  // target dot
   var tgtDot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
   tgtDot.setAttribute('cx', tx);
   tgtDot.setAttribute('cy', ty);
@@ -504,26 +513,49 @@ function drawArc(atk) {
   g.appendChild(tgtDot);
   svg.appendChild(g);
 
-  // schedule removal — keep the timeout ID so we can cancel it if needed
+  // kick off the reveal animation on next frame
+  // (need the element in the DOM first for the transition to work)
+  requestAnimationFrame(function() {
+    glow.style.strokeDashoffset = 0;
+    arc.style.strokeDashoffset  = 0;
+  });
+
+  // schedule removal
   var timeoutId = setTimeout(function() {
-    g.style.transition = 'opacity 1s ease';
+    g.style.transition = 'opacity 0.8s ease';
     g.style.opacity = '0';
     setTimeout(function() {
       removeArcById(atk.id);
-    }, 1000);
+    }, 800);
   }, CONFIG.ARC_LIFE);
 
-  state.svgArcs.push({ id: atk.id, el: g, atk: atk, born: Date.now(), timeout: timeoutId });
+  state.svgArcs.push({
+    id: atk.id,
+    el: g,
+    atk: atk,
+    born: Date.now(),
+    timeout: timeoutId,
+    revealed: false, // tracks if the travel animation already finished
+  });
 
-  // if we have too many arcs on screen, kill the oldest one right away
+  // mark it revealed after the animation completes
+  setTimeout(function() {
+    for (var i = 0; i < state.svgArcs.length; i++) {
+      if (state.svgArcs[i].id === atk.id) {
+        state.svgArcs[i].revealed = true;
+        break;
+      }
+    }
+  }, animMs + 50);
+
+  // trim old arcs if we're over the limit
   while (state.svgArcs.length > CONFIG.MAX_ARCS) {
     var old = state.svgArcs.shift();
-    clearTimeout(old.timeout);  // cancel its scheduled removal
+    clearTimeout(old.timeout);
     old.el.remove();
   }
 }
 
-// clean removal of a single arc by its id
 function removeArcById(id) {
   for (var i = 0; i < state.svgArcs.length; i++) {
     if (state.svgArcs[i].id === id) {
@@ -534,8 +566,12 @@ function removeArcById(id) {
   }
 }
 
-// FIX: redraw arcs after pan/zoom — recalculate positions AND dash values
+// redraw all arcs after pan/zoom finishes
+// since the SVG is now inside leaflet's overlay pane, the coordinate
+// system changes after zoom — we need to recalculate every position
 function redrawArcs() {
+  if (!state.map) return;
+
   for (var i = 0; i < state.svgArcs.length; i++) {
     var entry = state.svgArcs[i];
     var atk = entry.atk;
@@ -547,18 +583,21 @@ function redrawArcs() {
     var tx = tgtPt[0], ty = tgtPt[1];
 
     var d = buildCurve(sx, sy, tx, ty);
-    var pathLen = getPathLength(sx, sy, tx, ty);
+    var pathLen = measurePath(sx, sy, tx, ty);
 
-    // update the path shapes
+    // update the two path elements (glow + arc)
     var paths = el.querySelectorAll('path');
     for (var p = 0; p < paths.length; p++) {
       paths[p].setAttribute('d', d);
-      // recalculate dash values so the line doesn't look frozen
-      paths[p].style.strokeDasharray  = pathLen;
-      paths[p].style.strokeDashoffset = 0; // already revealed, just show it
+      // kill transition so it snaps to the new position instantly
+      paths[p].style.transition = 'none';
+      paths[p].style.strokeDasharray = pathLen;
+      // if the arc already finished its reveal animation, show it fully;
+      // otherwise keep it hidden (the travel animation will handle it)
+      paths[p].style.strokeDashoffset = entry.revealed ? 0 : pathLen;
     }
 
-    // move the circles to the new screen positions
+    // move the circle elements
     var circles = el.querySelectorAll('circle');
     if (circles[0]) { circles[0].setAttribute('cx', sx); circles[0].setAttribute('cy', sy); }
     if (circles[1]) { circles[1].setAttribute('cx', tx); circles[1].setAttribute('cy', ty); }
@@ -567,17 +606,14 @@ function redrawArcs() {
 }
 
 
-// -- core: register a new attack event --
+// -- add attack to the system --
 
-// throttle counter updates — don't rebuild the DOM lists on every single event
 var counterDirty = false;
-var counterTimer = null;
 
 function addAttack(atk) {
   state.attacks.unshift(atk);
   if (state.attacks.length > 100) state.attacks.pop();
 
-  // update tallies
   state.srcTally[atk.src.code] = (state.srcTally[atk.src.code] || 0) + 1;
   state.tgtTally[atk.tgt.code] = (state.tgtTally[atk.tgt.code] || 0) + 1;
   state.typeTally[atk.type]    = (state.typeTally[atk.type]    || 0) + 1;
@@ -585,10 +621,10 @@ function addAttack(atk) {
   drawArc(atk);
   addFeedRow(atk);
 
-  // batch counter updates — at most once every 500ms instead of every event
+  // batch counter updates so we're not thrashing the DOM
   if (!counterDirty) {
     counterDirty = true;
-    counterTimer = setTimeout(function() {
+    setTimeout(function() {
       updateCounters();
       counterDirty = false;
     }, 500);
@@ -596,9 +632,9 @@ function addAttack(atk) {
 }
 
 
-// -- live feed panel --
+// -- live feed --
 
-var feedTimestamps = []; // parallel array: feedTimestamps[i] = timestamp for feed row i
+var feedTimestamps = [];
 
 function addFeedRow(atk) {
   var feed = document.getElementById('feed-scroll');
@@ -608,7 +644,6 @@ function addFeedRow(atk) {
   row.className = 'feed-row';
   if (isReal) row.style.borderLeft = '2px solid ' + atk.color;
 
-  // build the row HTML
   var html = '<div class="fr-top">' +
     '<div class="fr-left">' +
     '<span class="fr-dot" style="background:' + atk.color + '"></span>' +
@@ -633,10 +668,8 @@ function addFeedRow(atk) {
   row.innerHTML = html;
   feed.prepend(row);
 
-  // track when this row was added
   feedTimestamps.unshift(Date.now());
 
-  // trim excess rows
   while (feed.children.length > CONFIG.MAX_FEED) {
     feed.lastChild.remove();
     feedTimestamps.pop();
@@ -645,28 +678,22 @@ function addFeedRow(atk) {
   document.getElementById('feed-count').textContent = feed.children.length;
 }
 
-// update the "Xs ago" timestamps in the feed
-// uses the parallel array instead of querySelectorAll + WeakMap
 function tickTimestamps() {
   var rows = document.getElementById('feed-scroll').children;
   var now = Date.now();
   for (var i = 0; i < rows.length; i++) {
     var el = rows[i].querySelector('.fr-time');
     if (!el || i >= feedTimestamps.length) continue;
-    var seconds = Math.floor((now - feedTimestamps[i]) / 1000);
-    if (seconds < 5) {
-      el.textContent = 'just now';
-    } else if (seconds < 60) {
-      el.textContent = seconds + 's';
-    } else {
-      el.textContent = Math.floor(seconds / 60) + 'm';
-    }
+    var sec = Math.floor((now - feedTimestamps[i]) / 1000);
+    if (sec < 5)       el.textContent = 'just now';
+    else if (sec < 60) el.textContent = sec + 's';
+    else               el.textContent = Math.floor(sec / 60) + 'm';
   }
 }
 setInterval(tickTimestamps, 5000);
 
 
-// -- counters and rank lists --
+// -- counters --
 
 function updateCounters() {
   document.getElementById('total-count').textContent = totalCount.toLocaleString();
@@ -712,7 +739,6 @@ function updateTypeList() {
   for (var i = 0; i < keys.length; i++) total += state.typeTally[keys[i]];
   if (!total) return;
 
-  // sort attack types by count descending
   var sorted = ATTACK_TYPES.slice().sort(function(a, b) {
     return (state.typeTally[b.id] || 0) - (state.typeTally[a.id] || 0);
   });
@@ -790,7 +816,7 @@ setInterval(updateClock, 1000);
 updateClock();
 
 
-// -- attack detail card --
+// -- detail card --
 
 function showCard(atk) {
   document.getElementById('ac-dot').style.background    = atk.color;
@@ -813,7 +839,7 @@ window.closeCard = function() {
 };
 
 
-// -- simulation loop --
+// -- sim loop --
 
 function runSimLoop() {
   var atk = simulate();
@@ -821,7 +847,6 @@ function runSimLoop() {
   setTimeout(runSimLoop, ri(CONFIG.SIM_MIN_MS, CONFIG.SIM_MAX_MS));
 }
 
-// populate the feed with some initial entries so it doesn't look empty
 function seedInitial() {
   for (var i = 0; i < 15; i++) {
     var atk = simulate();
@@ -836,7 +861,7 @@ function seedInitial() {
 }
 
 
-// -- boot everything up --
+// -- boot --
 
 window.addEventListener('load', function() {
   initMap();
@@ -844,14 +869,12 @@ window.addEventListener('load', function() {
   buildFilterChips();
   seedInitial();
 
-  // short delay so the map tiles have a moment to load
   setTimeout(function() {
     for (var i = 0; i < state.attacks.length; i++) {
       drawArc(state.attacks[i]);
     }
     runSimLoop();
 
-    // only poll OTX if an API key is actually set
     if (CONFIG.OTX_KEY && CONFIG.OTX_KEY !== 'YOUR_OTX_API_KEY_HERE' && CONFIG.OTX_KEY.length > 10) {
       pollOTX();
       setInterval(pollOTX, CONFIG.OTX_INTERVAL);

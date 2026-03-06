@@ -671,37 +671,30 @@ html, body {
 
 .ldot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
 
-/* ── Leaflet arc line ───────────────────────────────────── */
-.attack-arc {
-  stroke-opacity: 0.7;
-  fill: none;
-}
-
 /* ── Severity colors ────────────────────────────────────── */
 .sev-critical { color: var(--red);    background: rgba(239,68,68,0.1);  border: 1px solid rgba(239,68,68,0.2); }
 .sev-high     { color: var(--orange); background: rgba(249,115,22,0.1); border: 1px solid rgba(249,115,22,0.2); }
 .sev-medium   { color: var(--yellow); background: rgba(234,179,8,0.1);  border: 1px solid rgba(234,179,8,0.2); }
 .sev-low      { color: var(--green);  background: rgba(34,197,94,0.1);  border: 1px solid rgba(34,197,94,0.2); }
 
-/* ── New classes ──────────────────────────────────────── */
-.header-stats-center { display: flex; align-items: center; gap: 20px; }
+/* ── Utility ──────────────────────────────────────────── */
 .sidebar-scroll { flex: 1; overflow-y: auto; overflow-x: hidden; }
 .section-dot { display:inline-block; width:5px; height:5px; border-radius:50%; margin-right:5px; flex-shrink:0; vertical-align:middle; }
 .data-badge { display:flex; align-items:center; gap:6px; font-size:11px; color:var(--white-muted); font-family: var(--mono); letter-spacing:0.04em; }
 .badge-dot { width:6px; height:6px; border-radius:50%; background:var(--green); box-shadow:0 0 5px var(--green); animation:dot-pulse 2s ease-in-out infinite; }
 .footer-val.muted { color: var(--white-muted); }
-.hs-value.green { color: var(--green); }
-.hs-value.accent { color: var(--blue-light); }
 
-/* Arc SVG overlay */
+/* Arc SVG overlay -- stays in sync with the leaflet map pane */
 #arc-svg { position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:450; overflow:visible; }
 
-/* Severity badge colors */
-.sev-critical { color: var(--red);    background: rgba(239,68,68,0.1);  border: 1px solid rgba(239,68,68,0.2); }
-.sev-high     { color: var(--orange); background: rgba(249,115,22,0.1); border: 1px solid rgba(249,115,22,0.2); }
-.sev-medium   { color: var(--yellow); background: rgba(234,179,8,0.1);  border: 1px solid rgba(234,179,8,0.2); }
-.sev-low      { color: var(--green);  background: rgba(34,197,94,0.1);  border: 1px solid rgba(34,197,94,0.2); }
-
-/* Arc animations */
-@keyframes arc-travel { from { stroke-dashoffset: 1000; } to { stroke-dashoffset: 0; } }
-@keyframes pulse-ring { 0% { r:4; stroke-opacity:0.8; stroke-width:2; } 100% { r:18; stroke-opacity:0; stroke-width:0.5; } }
+/*
+ * pulse-ring still uses CSS because it's simple and short-lived.
+ * arc-travel is GONE on purpose — JS handles the dash animation
+ * with correct per-path lengths now. The old keyframe used a
+ * hardcoded 1000px offset that didn't match actual path sizes,
+ * which made arcs look broken after any zoom change.
+ */
+@keyframes pulse-ring {
+  0%   { r:4;  stroke-opacity:0.8; stroke-width:2; }
+  100% { r:18; stroke-opacity:0;   stroke-width:0.5; }
+}
