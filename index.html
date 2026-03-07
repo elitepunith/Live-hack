@@ -33,10 +33,7 @@
     </div>
 
     <nav class="header-center">
-      <!-- these get wired up in script.js via showTab() -->
       <span class="nav-item active">Threat Map</span>
-      <span class="nav-item">Analytics</span>
-      <span class="nav-item">Reports</span>
     </nav>
 
     <div class="header-right">
@@ -57,7 +54,7 @@
     </div>
   </header>
 
-  <!-- MAIN LAYOUT — Threat Map tab -->
+  <!-- LAYOUT -->
   <div id="layout">
 
     <!-- Left sidebar -->
@@ -110,16 +107,19 @@
 
     <!-- Map area -->
     <div id="map-wrap">
+      <!-- Leaflet map tiles -->
       <div id="map"></div>
+
+      <!-- SVG overlay for animated arcs — sits above the map -->
       <svg id="arc-svg" xmlns="http://www.w3.org/2000/svg"></svg>
 
-      <!-- Filter chips overlay -->
+      <!-- Filter chips -->
       <div id="filter-bar">
         <span class="filter-label mono">Filter</span>
         <div id="filter-chips"></div>
       </div>
 
-      <!-- Attack detail card popup -->
+      <!-- Attack detail card -->
       <div id="attack-card" class="hidden">
         <div class="ac-header">
           <span class="ac-type-dot" id="ac-dot"></span>
@@ -149,7 +149,7 @@
       </div>
     </div>
 
-    <!-- Right live feed panel -->
+    <!-- Right feed panel -->
     <aside id="feed-panel">
       <div class="feed-header">
         <div class="feed-title-row">
@@ -161,9 +161,9 @@
       <div id="feed-scroll"></div>
     </aside>
 
-  </div><!-- end #layout -->
+  </div>
 
-  <!-- BOTTOM BAR (only shown on Threat Map tab) -->
+  <!-- BOTTOM BAR -->
   <div id="bottom-bar">
     <div id="type-stats"></div>
     <div class="bottom-legend">
@@ -174,168 +174,6 @@
       <div class="legend-item"><span class="ldot" style="background:#22c55e"></span>Low</div>
     </div>
   </div>
-
-  <!-- ───────────────────────────────────────────────
-       ANALYTICS VIEW
-       Shown when the "Analytics" nav tab is clicked.
-       All chart rendering happens in script.js.
-  ─────────────────────────────────────────────────── -->
-  <div id="analytics-view" class="page-view">
-    <div class="an-content">
-
-      <!-- Stat summary cards -->
-      <div class="an-stats-row">
-        <div class="an-card">
-          <div class="an-card-label">Total Attacks</div>
-          <div class="an-card-value" id="an-total">—</div>
-        </div>
-        <div class="an-card">
-          <div class="an-card-label">Peak / Min</div>
-          <div class="an-card-value" style="color:#ef4444" id="an-peak">—</div>
-        </div>
-        <div class="an-card">
-          <div class="an-card-label">Avg / Min</div>
-          <div class="an-card-value" style="color:#3b82f6" id="an-avg">—</div>
-        </div>
-        <div class="an-card">
-          <div class="an-card-label">Top Threat</div>
-          <div class="an-card-value" id="an-top-threat">—</div>
-        </div>
-        <div class="an-card">
-          <div class="an-card-label">Most Targeted</div>
-          <div class="an-card-value" id="an-most-targeted">—</div>
-        </div>
-        <div class="an-card">
-          <div class="an-card-label">Session Time</div>
-          <div class="an-card-value mono" style="color:#22c55e" id="an-session-time">—</div>
-        </div>
-      </div>
-
-      <!-- Timeline chart: attacks per minute, last 60 minutes -->
-      <div class="an-panel an-full">
-        <div class="an-panel-header">
-          <span class="an-panel-title">Attack Volume — Last 60 Minutes</span>
-          <span class="an-panel-sub mono" id="an-timeline-sub">Live</span>
-        </div>
-        <div class="an-timeline-wrap" id="an-timeline-svg-wrap"></div>
-        <div class="an-timeline-labels">
-          <span>60m ago</span>
-          <span>45m ago</span>
-          <span>30m ago</span>
-          <span>15m ago</span>
-          <span>Now</span>
-        </div>
-      </div>
-
-      <!-- Row: Attack types bar chart + Severity donut -->
-      <div class="an-panels-row">
-        <div class="an-panel">
-          <div class="an-panel-header">
-            <span class="an-panel-title">Attack Types Distribution</span>
-          </div>
-          <div id="an-types-chart" class="an-bar-chart"></div>
-        </div>
-
-        <div class="an-panel an-donut-panel">
-          <div class="an-panel-header">
-            <span class="an-panel-title">Severity Breakdown</span>
-          </div>
-          <div class="an-donut-wrap">
-            <div id="an-donut-svg"></div>
-            <div class="an-donut-legend" id="an-donut-legend"></div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Row: Top attacker countries + Top target countries -->
-      <div class="an-panels-row">
-        <div class="an-panel">
-          <div class="an-panel-header">
-            <span class="an-panel-title">Top Attacker Countries</span>
-          </div>
-          <table class="an-table" id="an-src-table"></table>
-        </div>
-        <div class="an-panel">
-          <div class="an-panel-header">
-            <span class="an-panel-title">Top Target Countries</span>
-          </div>
-          <table class="an-table" id="an-tgt-table"></table>
-        </div>
-      </div>
-
-    </div>
-  </div><!-- end #analytics-view -->
-
-  <!-- ───────────────────────────────────────────────
-       REPORTS VIEW
-       Shown when the "Reports" nav tab is clicked.
-       Export buttons call window.exportCSV / exportJSON / copySummary
-  ─────────────────────────────────────────────────── -->
-  <div id="reports-view" class="page-view">
-    <div class="rp-content">
-
-      <!-- Header bar with title and export buttons -->
-      <div class="rp-header-row">
-        <div>
-          <div class="rp-title">Threat Intelligence Report</div>
-          <div class="rp-subtitle mono" id="rp-generated">Generated: —</div>
-        </div>
-        <div class="rp-actions">
-          <button class="rp-btn" onclick="exportCSV()">⬇ Export CSV</button>
-          <button class="rp-btn" onclick="exportJSON()">⬇ Export JSON</button>
-          <button class="rp-btn outline" onclick="copySummary()">⎘ Copy Summary</button>
-        </div>
-      </div>
-
-      <!-- Session overview stats -->
-      <div class="rp-section">
-        <div class="rp-section-title">Session Overview</div>
-        <div class="rp-stat-grid" id="rp-overview-stats"></div>
-      </div>
-
-      <!-- Full threat matrix: every attack type with stats -->
-      <div class="rp-section">
-        <div class="rp-section-title">Threat Matrix</div>
-        <table class="rp-table" id="rp-threat-table">
-          <thead>
-            <tr>
-              <th>Attack Type</th>
-              <th>Count</th>
-              <th>Share</th>
-              <th>Severity</th>
-              <th>Common Ports</th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-      </div>
-
-      <!-- Country activity: sources and targets side by side -->
-      <div class="rp-section">
-        <div class="rp-section-title">Country Activity</div>
-        <div class="rp-countries-grid">
-          <div>
-            <div class="rp-sub-title">Top Attack Sources</div>
-            <table class="rp-table" id="rp-src-table">
-              <thead><tr><th>Country</th><th>Attacks</th><th>Share</th></tr></thead>
-              <tbody></tbody>
-            </table>
-          </div>
-          <div>
-            <div class="rp-sub-title">Top Attack Targets</div>
-            <table class="rp-table" id="rp-tgt-table">
-              <thead><tr><th>Country</th><th>Attacks</th><th>Share</th></tr></thead>
-              <tbody></tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-
-    </div>
-
-    <!-- Toast notification for copy confirmation -->
-    <div class="rp-toast hidden" id="rp-toast">✓ Copied to clipboard</div>
-  </div><!-- end #reports-view -->
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="script.js"></script>
