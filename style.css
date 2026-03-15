@@ -580,6 +580,7 @@ html[data-theme="neon"] .logo-icon svg circle {
   padding: 6px 10px;
   backdrop-filter: blur(8px);
   max-width: calc(100% - 24px);
+  overflow: hidden;
 }
 
 html[data-theme="light"] #filter-bar {
@@ -595,11 +596,16 @@ html[data-theme="neon"] #filter-bar {
   text-transform: uppercase;
   letter-spacing: 0.1em;
   color: var(--white-muted);
-  margin-right: 2px;
   flex-shrink: 0;
 }
 
-#filter-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+#filter-chips {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+#filter-chips::-webkit-scrollbar { display: none; }
 
 .fchip {
   padding: 2px 8px;

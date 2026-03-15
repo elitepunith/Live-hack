@@ -753,17 +753,35 @@ function buildFilterChips() {
 
 function makeChip(label, id, active) {
   const el = document.createElement('span');
-  el.className     = 'fchip' + (active ? ' active' : '');
-  el.textContent   = label;
-  el.dataset.id    = id;
+  el.className   = 'fchip' + (active ? ' active' : '');
+  el.textContent = label;
+  el.dataset.id  = id;
 
   el.addEventListener('click', () => {
     document.querySelectorAll('.fchip').forEach(c => c.classList.remove('active'));
     el.classList.add('active');
     state.filter = id;
+    applyFilter();
   });
 
   return el;
+}
+
+// clear the SVG and redraw only arcs that match the active filter
+function applyFilter() {
+  // wipe every arc currently on screen
+  for (const entry of state.svgArcs) {
+    clearTimeout(entry.timeout);
+    entry.el.remove();
+  }
+  state.svgArcs = [];
+
+  // redraw from the stored attack history
+  const visible = state.filter === 'all'
+    ? state.attacks
+    : state.attacks.filter(a => a.type === state.filter);
+
+  visible.forEach(atk => drawArc(atk));
 }
 
 
