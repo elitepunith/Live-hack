@@ -1,4 +1,5 @@
-var CONFIG = {
+// ── Config ────────────────────────────────────────────────
+const CONFIG = {
   OTX_KEY:      '',
   OTX_INTERVAL: 30000,
   SIM_MIN_MS:   900,
@@ -8,8 +9,8 @@ var CONFIG = {
   ARC_LIFE:     10000,
 };
 
-// country coords for placing dots on the map
-var GEO = [
+// country coords — lat/lng centers used for arc endpoints
+const GEO = [
   { code:'CN', name:'China',          lat:35.86,  lng:104.19,  flag:'🇨🇳' },
   { code:'RU', name:'Russia',         lat:61.52,  lng:105.31,  flag:'🇷🇺' },
   { code:'US', name:'United States',  lat:37.09,  lng:-95.71,  flag:'🇺🇸' },
@@ -52,13 +53,11 @@ var GEO = [
   { code:'CZ', name:'Czech Rep.',     lat:49.81,  lng:15.47,   flag:'🇨🇿' },
 ];
 
-// hash map so we don't .find() every time
-var geoByCode = {};
-for (var i = 0; i < GEO.length; i++) {
-  geoByCode[GEO[i].code] = GEO[i];
-}
+// build a fast lookup so we don't scan the whole array every time
+const geoByCode = {};
+GEO.forEach(g => { geoByCode[g.code] = g; });
 
-var ATTACK_TYPES = [
+const ATTACK_TYPES = [
   { id:'ddos',       label:'DDoS',        color:'#ef4444', severity:'critical', weight:18, ports:[80,443,53,123]  },
   { id:'ransomware', label:'Ransomware',  color:'#f97316', severity:'critical', weight:5,  ports:[445,3389,139]   },
   { id:'malware',    label:'Malware C2',  color:'#a855f7', severity:'critical', weight:8,  ports:[4444,8888,1337] },
@@ -71,16 +70,13 @@ var ATTACK_TYPES = [
   { id:'mitm',       label:'MITM',        color:'#22c55e', severity:'high',     weight:3,  ports:[80,443]         },
 ];
 
-// sum it once so pickType doesn't recompute
-var TOTAL_TYPE_WEIGHT = 0;
-for (var i = 0; i < ATTACK_TYPES.length; i++) {
-  TOTAL_TYPE_WEIGHT += ATTACK_TYPES[i].weight;
-}
+const TOTAL_TYPE_WEIGHT = ATTACK_TYPES.reduce((sum, t) => sum + t.weight, 0);
 
-var OTX_TYPE_MAP = {
+// rough keyword-to-type mapping for OTX pulse data
+const OTX_TYPE_MAP = {
   ddos:'ddos', dos:'ddos', flood:'ddos',
   ransomware:'ransomware', ransom:'ransomware',
-  rat:'malware', trojan:'malware', backdoor:'malware', botnet:'malware', 'c2':'malware',
+  rat:'malware', trojan:'malware', backdoor:'malware', botnet:'malware', c2:'malware',
   exploit:'zeroday', cve:'zeroday', '0day':'zeroday',
   bruteforce:'bruteforce', brute:'bruteforce', credential:'bruteforce',
   sqli:'sqli', 'sql injection':'sqli',
@@ -89,10 +85,12 @@ var OTX_TYPE_MAP = {
   xss:'xss', mitm:'mitm',
 };
 
-var SRC_WEIGHTS = {CN:24,RU:20,US:10,KP:8,IR:6,UA:5,NL:4,RO:4,IN:3,BR:3,TR:2,VN:2,NG:2,HK:2};
-var TGT_WEIGHTS = {US:28,GB:11,DE:8,JP:7,FR:6,CA:5,AU:5,KR:4,SG:3,IL:3,TW:3,CH:2,SE:2,NL:2,SA:2,IT:2,IN:2,BR:2};
+// weighted probability for source/target countries
+const SRC_WEIGHTS = {CN:24,RU:20,US:10,KP:8,IR:6,UA:5,NL:4,RO:4,IN:3,BR:3,TR:2,VN:2,NG:2,HK:2};
+const TGT_WEIGHTS = {US:28,GB:11,DE:8,JP:7,FR:6,CA:5,AU:5,KR:4,SG:3,IL:3,TW:3,CH:2,SE:2,NL:2,SA:2,IT:2,IN:2,BR:2};
 
-var IP_POOLS = {
+// partial IP prefixes per country — we add random last two octets
+const IP_POOLS = {
   CN:['180.76','223.71','101.89','42.56'],
   RU:['5.255','77.88','91.108','185.29'],
   US:['104.16','172.217','54.239','13.32'],
@@ -103,16 +101,30 @@ var IP_POOLS = {
   _:['45.33','162.241','104.244','198.199'],
 };
 
+// tile layer URLs per theme
+const TILE_URLS = {
+  dark:  'https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png',
+  light: 'https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png',
+  neon:  'https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png',
+};
 
-// -- helpers --
+// speed presets [slow, normal, fast]
+const SPEEDS = [
+  { label:'×½', min:2500, max:5000 },
+  { label:'×1', min:900,  max:2500 },
+  { label:'×2', min:200,  max:700  },
+];
 
+
+// ── Helpers ───────────────────────────────────────────────
+
+// pick a key from an object of {key: weight} pairs
 function weighted(map) {
-  var keys = Object.keys(map);
-  var vals = Object.values(map);
-  var total = 0;
-  for (var i = 0; i < vals.length; i++) total += vals[i];
-  var r = Math.random() * total;
-  for (var i = 0; i < keys.length; i++) {
+  const keys = Object.keys(map);
+  const vals = Object.values(map);
+  const total = vals.reduce((s, v) => s + v, 0);
+  let r = Math.random() * total;
+  for (let i = 0; i < keys.length; i++) {
     r -= vals[i];
     if (r <= 0) return keys[i];
   }
@@ -120,19 +132,20 @@ function weighted(map) {
 }
 
 function pickType() {
-  var r = Math.random() * TOTAL_TYPE_WEIGHT;
-  for (var i = 0; i < ATTACK_TYPES.length; i++) {
-    r -= ATTACK_TYPES[i].weight;
-    if (r <= 0) return ATTACK_TYPES[i];
+  let r = Math.random() * TOTAL_TYPE_WEIGHT;
+  for (const t of ATTACK_TYPES) {
+    r -= t.weight;
+    if (r <= 0) return t;
   }
   return ATTACK_TYPES[0];
 }
 
+// random int between a and b (inclusive)
 function ri(a, b) {
   return Math.floor(Math.random() * (b - a + 1)) + a;
 }
 
-// small jitter so markers don't stack
+// small random jitter so markers don't all stack on the same pixel
 function jit() {
   return (Math.random() - 0.5) * 2.5;
 }
@@ -146,31 +159,47 @@ function randGeo() {
 }
 
 function fakeIP(code) {
-  var pool = IP_POOLS[code] || IP_POOLS._;
+  const pool = IP_POOLS[code] || IP_POOLS._;
   return pool[Math.floor(Math.random() * pool.length)] + '.' + ri(1,253) + '.' + ri(1,253);
 }
 
 
-var totalCount = ri(160000, 220000);
-var perMinBucket = [];
+// ── App state ─────────────────────────────────────────────
+
+let totalCount = ri(160000, 220000);
+let perMinBucket = [];
+
+const state = {
+  attacks:   [],
+  svgArcs:   [],
+  srcTally:  {},
+  tgtTally:  {},
+  typeTally: {},
+  filter:    'all',
+  map:       null,
+  tileLayer: null,
+};
+
+ATTACK_TYPES.forEach(t => { state.typeTally[t.id] = 0; });
 
 
-// -- simulation --
+// ── Simulation ────────────────────────────────────────────
 
 function simulate() {
-  var srcCode = weighted(SRC_WEIGHTS);
-  var tgtCode;
+  const srcCode = weighted(SRC_WEIGHTS);
+  let tgtCode;
+  // make sure source and target aren't the same country
   do { tgtCode = weighted(TGT_WEIGHTS); } while (tgtCode === srcCode);
 
-  var src = byCode(srcCode);
-  var tgt = byCode(tgtCode);
+  const src = byCode(srcCode);
+  const tgt = byCode(tgtCode);
   if (!src || !tgt) return null;
 
-  var type = pickType();
+  const type = pickType();
   totalCount++;
 
   return {
-    id:       'sim-' + Date.now() + '-' + Math.random().toString(36).slice(2,5),
+    id:       'sim-' + Date.now() + '-' + Math.random().toString(36).slice(2, 5),
     ts:       Date.now(),
     source:   'sim',
     src:      { code:src.code, name:src.name, lat:src.lat+jit(), lng:src.lng+jit(), ip:fakeIP(srcCode), flag:src.flag },
@@ -184,42 +213,44 @@ function simulate() {
 }
 
 
-// -- OTX stuff --
+// ── OTX integration ───────────────────────────────────────
 
-var otxSeen = new Set();
-var geoCache = {};
+const otxSeen  = new Set();
+const geoCache = {};
 
 async function geolocateIPs(ips) {
-  var fresh = ips.filter(function(ip) { return !geoCache[ip]; }).slice(0, 50);
+  const fresh = ips.filter(ip => !geoCache[ip]).slice(0, 50);
   if (!fresh.length) return;
+
   try {
-    var res = await fetch('https://ip-api.com/batch?fields=status,country,countryCode,lat,lon,query', {
+    const res = await fetch('https://ip-api.com/batch?fields=status,country,countryCode,lat,lon,query', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(fresh.map(function(q) { return { query: q }; })),
+      body: JSON.stringify(fresh.map(q => ({ query: q }))),
     });
     if (!res.ok) return;
-    var rows = await res.json();
-    for (var i = 0; i < rows.length; i++) {
-      var r = rows[i];
+
+    const rows = await res.json();
+    for (const r of rows) {
       if (r.status === 'success') {
-        geoCache[r.query] = { code: r.countryCode, name: r.country, lat: r.lat, lng: r.lon };
+        geoCache[r.query] = { code:r.countryCode, name:r.country, lat:r.lat, lng:r.lon };
       }
     }
-  } catch(err) {
-    // skip it
+  } catch(e) {
+    // no-op — we'll fall back to a random geo below
   }
 }
 
 function typeFromPulse(pulse) {
-  var hay = [pulse.name||'', pulse.description||''].concat(pulse.tags||[]).concat(pulse.malware_families||[]).join(' ').toLowerCase();
-  var keys = Object.keys(OTX_TYPE_MAP);
-  for (var i = 0; i < keys.length; i++) {
-    if (hay.indexOf(keys[i]) !== -1) {
-      var found = null;
-      for (var j = 0; j < ATTACK_TYPES.length; j++) {
-        if (ATTACK_TYPES[j].id === OTX_TYPE_MAP[keys[i]]) { found = ATTACK_TYPES[j]; break; }
-      }
+  const hay = [pulse.name||'', pulse.description||'']
+    .concat(pulse.tags||[])
+    .concat(pulse.malware_families||[])
+    .join(' ')
+    .toLowerCase();
+
+  for (const key of Object.keys(OTX_TYPE_MAP)) {
+    if (hay.includes(key)) {
+      const found = ATTACK_TYPES.find(t => t.id === OTX_TYPE_MAP[key]);
       return found || pickType();
     }
   }
@@ -227,116 +258,93 @@ function typeFromPulse(pulse) {
 }
 
 async function pulseToAttacks(pulse) {
-  var indicators = (pulse.indicators || []);
-  var inds = [];
-  for (var i = 0; i < indicators.length; i++) {
-    if (indicators[i].type === 'IPv4' && !otxSeen.has(indicators[i].indicator)) {
-      inds.push(indicators[i]);
-    }
-    if (inds.length >= 5) break;
-  }
+  const inds = (pulse.indicators || [])
+    .filter(i => i.type === 'IPv4' && !otxSeen.has(i.indicator))
+    .slice(0, 5);
+
   if (!inds.length) return [];
 
-  await geolocateIPs(inds.map(function(ind) { return ind.indicator; }));
+  await geolocateIPs(inds.map(i => i.indicator));
 
-  var type = typeFromPulse(pulse);
-  var results = [];
+  const type = typeFromPulse(pulse);
+  const results = [];
 
-  for (var i = 0; i < inds.length; i++) {
-    var ind = inds[i];
+  for (const ind of inds) {
     otxSeen.add(ind.indicator);
 
-    var geo = geoCache[ind.indicator];
-    var matched = geo ? byCode(geo.code) : null;
-    var src;
+    const geo     = geoCache[ind.indicator];
+    const matched = geo ? byCode(geo.code) : null;
+    let src;
+
     if (geo) {
       src = {
         code: geo.code,
         name: geo.name || geo.code,
-        lat: geo.lat + jit(),
-        lng: geo.lng + jit(),
-        ip: ind.indicator,
-        flag: matched ? matched.flag : '🌐'
+        lat:  geo.lat + jit(),
+        lng:  geo.lng + jit(),
+        ip:   ind.indicator,
+        flag: matched ? matched.flag : '🌐',
       };
     } else {
-      var fallback = randGeo();
+      const fallback = randGeo();
       src = { code:fallback.code, name:fallback.name, lat:fallback.lat+jit(), lng:fallback.lng+jit(), ip:ind.indicator, flag:fallback.flag };
     }
 
-    var tgtCode = weighted(TGT_WEIGHTS);
-    var tgt = byCode(tgtCode);
+    const tgtCode = weighted(TGT_WEIGHTS);
+    const tgt = byCode(tgtCode);
     if (!tgt) continue;
 
     totalCount++;
     results.push({
-      id: 'otx-' + ind.indicator.replace(/\./g,'-') + '-' + Date.now(),
-      ts: Date.now(),
-      source: 'otx',
-      pulse: pulse.name,
-      src: src,
+      id:       'otx-' + ind.indicator.replace(/\./g, '-') + '-' + Date.now(),
+      ts:       Date.now(),
+      source:   'otx',
+      pulse:    pulse.name,
+      src,
       tgt: { code:tgt.code, name:tgt.name, lat:tgt.lat+jit(), lng:tgt.lng+jit(), ip:fakeIP(tgtCode), flag:tgt.flag },
-      type: type.id,
-      label: type.label,
-      color: type.color,
+      type:     type.id,
+      label:    type.label,
+      color:    type.color,
       severity: type.severity,
-      port: type.ports[Math.floor(Math.random() * type.ports.length)],
+      port:     type.ports[Math.floor(Math.random() * type.ports.length)],
     });
   }
+
   return results;
 }
 
 async function pollOTX() {
   try {
-    var res = await fetch('https://otx.alienvault.com/api/v1/pulses/activity?limit=15', {
-      headers: { 'X-OTX-API-KEY': CONFIG.OTX_KEY }
+    const res = await fetch('https://otx.alienvault.com/api/v1/pulses/activity?limit=15', {
+      headers: { 'X-OTX-API-KEY': CONFIG.OTX_KEY },
     });
     if (!res.ok) throw new Error(res.status);
 
-    var data = await res.json();
-    var pulses = data.results || [];
+    const data   = await res.json();
+    const pulses = data.results || [];
 
-    for (var p = 0; p < pulses.length; p++) {
-      var attacks = await pulseToAttacks(pulses[p]);
-      for (var a = 0; a < attacks.length; a++) {
-        addAttack(attacks[a]);
-        await new Promise(function(resolve) { setTimeout(resolve, 500); });
+    for (const pulse of pulses) {
+      const attacks = await pulseToAttacks(pulse);
+      for (const atk of attacks) {
+        addAttack(atk);
+        await new Promise(r => setTimeout(r, 500));
       }
     }
 
-    var el = document.getElementById('data-source');
-    if (el) {
-      el.textContent = 'OTX Live';
-      el.style.color = '#22c55e';
-    }
+    const el = document.getElementById('data-source');
+    if (el) { el.textContent = 'OTX Live'; el.style.color = '#22c55e'; }
   } catch(e) {
     console.warn('OTX poll failed:', e.message);
   }
 }
 
 
-// -- app state --
-
-var state = {
-  attacks:  [],
-  svgArcs:  [],
-  srcTally: {},
-  tgtTally: {},
-  typeTally:{},
-  filter:   'all',
-  map:      null,
-};
-
-for (var i = 0; i < ATTACK_TYPES.length; i++) {
-  state.typeTally[ATTACK_TYPES[i].id] = 0;
-}
-
-
-// -- map setup --
-// The map is fully static — no zoom, no pan. Since it never moves,
-// latLngToContainerPoint() always gives correct pixel coords for arcs.
+// ── Map setup ─────────────────────────────────────────────
+// The map is intentionally locked — no zoom, no pan.
+// That way latLngToContainerPoint() always returns consistent pixels for arcs.
 
 function initMap() {
-  var map = L.map('map', {
+  const map = L.map('map', {
     center: [25, 10],
     zoom: 2,
     zoomControl: false,
@@ -351,104 +359,96 @@ function initMap() {
     maxZoom: 2,
   });
 
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png', {
+  const currentTheme = document.documentElement.getAttribute('data-theme') || 'dark';
+  state.tileLayer = L.tileLayer(TILE_URLS[currentTheme] || TILE_URLS.dark, {
     subdomains: 'abcd',
-    maxZoom: 20
+    maxZoom: 20,
   }).addTo(map);
 
   state.map = map;
 
-  // redraw arcs whenever the container is resized
-  window.addEventListener('resize', function() {
+  window.addEventListener('resize', () => {
     map.invalidateSize();
     redrawArcs();
   });
 }
 
 
-// -- SVG arc drawing --
+// ── SVG arc drawing ───────────────────────────────────────
 
 function getSVG() {
   return document.getElementById('arc-svg');
 }
 
-// convert lat/lng to pixel coords relative to the map container
 function latLngToXY(lat, lng) {
-  var pt = state.map.latLngToContainerPoint([lat, lng]);
+  const pt = state.map.latLngToContainerPoint([lat, lng]);
   return [pt.x, pt.y];
 }
 
-// build a quadratic bezier curve between two screen points
+// quadratic bezier — control point lifted perpendicular to the chord
 function buildCurve(x1, y1, x2, y2) {
-  var mx = (x1 + x2) / 2;
-  var my = (y1 + y2) / 2;
-  var dx = x2 - x1;
-  var dy = y2 - y1;
-  var dist = Math.sqrt(dx * dx + dy * dy);
-  if (dist < 1) dist = 1;
-  var lift = Math.min(dist * 0.38, 200);
-  var nx = -dy / dist;
-  var ny = dx / dist;
-  return 'M ' + x1 + ' ' + y1 + ' Q ' + (mx + nx*lift) + ' ' + (my + ny*lift) + ' ' + x2 + ' ' + y2;
+  const mx   = (x1 + x2) / 2;
+  const my   = (y1 + y2) / 2;
+  const dx   = x2 - x1;
+  const dy   = y2 - y1;
+  const dist = Math.sqrt(dx*dx + dy*dy) || 1;
+  const lift = Math.min(dist * 0.38, 200);
+  const nx   = -dy / dist;
+  const ny   =  dx / dist;
+  return `M ${x1} ${y1} Q ${mx + nx*lift} ${my + ny*lift} ${x2} ${y2}`;
 }
 
-// rough path length estimate for setting dash values
+// rough length estimate used to set strokeDasharray correctly
 function measurePath(x1, y1, x2, y2) {
-  var mx = (x1 + x2) / 2;
-  var my = (y1 + y2) / 2;
-  var dx = x2 - x1;
-  var dy = y2 - y1;
-  var dist = Math.sqrt(dx * dx + dy * dy);
-  if (dist < 1) dist = 1;
-  var lift = Math.min(dist * 0.38, 200);
-  var nx = -dy / dist;
-  var ny = dx / dist;
-  var cx = mx + nx * lift;
-  var cy = my + ny * lift;
-  // average of the chord and the two control legs
-  var chord = Math.sqrt((x2-x1)*(x2-x1) + (y2-y1)*(y2-y1));
-  var legs  = Math.sqrt((x1-cx)*(x1-cx) + (y1-cy)*(y1-cy))
-            + Math.sqrt((cx-x2)*(cx-x2) + (cy-y2)*(cy-y2));
+  const mx   = (x1 + x2) / 2;
+  const my   = (y1 + y2) / 2;
+  const dx   = x2 - x1;
+  const dy   = y2 - y1;
+  const dist = Math.sqrt(dx*dx + dy*dy) || 1;
+  const lift = Math.min(dist * 0.38, 200);
+  const nx   = -dy / dist;
+  const ny   =  dx / dist;
+  const cx   = mx + nx * lift;
+  const cy   = my + ny * lift;
+  const chord = Math.sqrt((x2-x1)**2 + (y2-y1)**2);
+  const legs  = Math.sqrt((x1-cx)**2 + (y1-cy)**2)
+              + Math.sqrt((cx-x2)**2 + (cy-y2)**2);
   return (chord + legs) / 2;
 }
 
 function drawArc(atk) {
   if (state.filter !== 'all' && atk.type !== state.filter) return;
 
-  var svg = getSVG();
+  const svg = getSVG();
   if (!svg || !state.map) return;
 
-  var srcPt = latLngToXY(atk.src.lat, atk.src.lng);
-  var tgtPt = latLngToXY(atk.tgt.lat, atk.tgt.lng);
-  var sx = srcPt[0], sy = srcPt[1];
-  var tx = tgtPt[0], ty = tgtPt[1];
+  const [sx, sy] = latLngToXY(atk.src.lat, atk.src.lng);
+  const [tx, ty] = latLngToXY(atk.tgt.lat, atk.tgt.lng);
 
-  var d = buildCurve(sx, sy, tx, ty);
-  var pathLen = measurePath(sx, sy, tx, ty);
-  if (pathLen < 5) return; // skip if points are basically on top of each other
+  const d       = buildCurve(sx, sy, tx, ty);
+  const pathLen = measurePath(sx, sy, tx, ty);
+  if (pathLen < 5) return;
 
-  var isReal  = (atk.source === 'otx');
-  var color   = atk.color;
-  var weight  = isReal ? 1.8 : 1.2;
-  var animMs  = 1000 + Math.random() * 500;
+  const isReal  = (atk.source === 'otx');
+  const color   = atk.color;
+  const weight  = isReal ? 1.8 : 1.2;
+  const animMs  = 1000 + Math.random() * 500;
 
-  var g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+  const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
   g.setAttribute('data-id', atk.id);
 
-  // glow line (no blur filter — way cheaper on the GPU)
-  var glow = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  // subtle glow behind the main arc — cheaper than SVG filter blur
+  const glow = document.createElementNS('http://www.w3.org/2000/svg', 'path');
   glow.setAttribute('d', d);
   glow.setAttribute('stroke', color);
   glow.setAttribute('stroke-width', weight + 2);
   glow.setAttribute('stroke-opacity', '0.12');
   glow.setAttribute('fill', 'none');
-  // start hidden, we'll reveal it with JS transition
   glow.style.strokeDasharray  = pathLen;
   glow.style.strokeDashoffset = pathLen;
-  glow.style.transition = 'stroke-dashoffset ' + animMs + 'ms cubic-bezier(0.4,0,0.2,1)';
+  glow.style.transition = `stroke-dashoffset ${animMs}ms cubic-bezier(0.4,0,0.2,1)`;
 
-  // main visible arc
-  var arc = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  const arc = document.createElementNS('http://www.w3.org/2000/svg', 'path');
   arc.setAttribute('d', d);
   arc.setAttribute('stroke', color);
   arc.setAttribute('stroke-width', weight);
@@ -457,125 +457,99 @@ function drawArc(atk) {
   arc.setAttribute('fill', 'none');
   arc.style.strokeDasharray  = pathLen;
   arc.style.strokeDashoffset = pathLen;
-  arc.style.transition = 'stroke-dashoffset ' + animMs + 'ms cubic-bezier(0.4,0,0.2,1)';
+  arc.style.transition = `stroke-dashoffset ${animMs}ms cubic-bezier(0.4,0,0.2,1)`;
 
-  // source dot
-  var srcDot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+  // dot at source
+  const srcDot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
   srcDot.setAttribute('cx', sx);
   srcDot.setAttribute('cy', sy);
   srcDot.setAttribute('r', isReal ? '4' : '3');
   srcDot.setAttribute('fill', color);
   srcDot.setAttribute('fill-opacity', '0.9');
 
-  // pulse ring at target
-  var ring = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+  // expanding ring at target after arc arrives
+  const ring = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
   ring.setAttribute('cx', tx);
   ring.setAttribute('cy', ty);
   ring.setAttribute('r', '4');
   ring.setAttribute('fill', 'none');
   ring.setAttribute('stroke', color);
   ring.setAttribute('stroke-width', '2');
-  ring.style.animation = 'pulse-ring 1.5s ease-out ' + animMs + 'ms 3 forwards';
+  ring.style.animation = `pulse-ring 1.5s ease-out ${animMs}ms 3 forwards`;
 
-  // target dot
-  var tgtDot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+  const tgtDot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
   tgtDot.setAttribute('cx', tx);
   tgtDot.setAttribute('cy', ty);
   tgtDot.setAttribute('r', '3');
   tgtDot.setAttribute('fill', color);
   tgtDot.setAttribute('fill-opacity', '0.85');
 
-  g.appendChild(glow);
-  g.appendChild(arc);
-  g.appendChild(srcDot);
-  g.appendChild(ring);
-  g.appendChild(tgtDot);
+  g.append(glow, arc, srcDot, ring, tgtDot);
   svg.appendChild(g);
 
-  // kick off the reveal animation on next frame
-  // (need the element in the DOM first for the transition to work)
-  requestAnimationFrame(function() {
+  // trigger the dash animation on the next paint tick
+  requestAnimationFrame(() => {
     glow.style.strokeDashoffset = 0;
     arc.style.strokeDashoffset  = 0;
   });
 
-  // schedule removal
-  var timeoutId = setTimeout(function() {
+  // schedule fade-out and removal
+  const timeoutId = setTimeout(() => {
     g.style.transition = 'opacity 0.8s ease';
-    g.style.opacity = '0';
-    setTimeout(function() {
-      removeArcById(atk.id);
-    }, 800);
+    g.style.opacity    = '0';
+    setTimeout(() => removeArcById(atk.id), 800);
   }, CONFIG.ARC_LIFE);
 
   state.svgArcs.push({
-    id: atk.id,
-    el: g,
-    atk: atk,
-    born: Date.now(),
-    timeout: timeoutId,
-    revealed: false, // tracks if the travel animation already finished
+    id:       atk.id,
+    el:       g,
+    atk:      atk,
+    born:     Date.now(),
+    timeout:  timeoutId,
+    revealed: false,
   });
 
-  // mark it revealed after the animation completes
-  setTimeout(function() {
-    for (var i = 0; i < state.svgArcs.length; i++) {
-      if (state.svgArcs[i].id === atk.id) {
-        state.svgArcs[i].revealed = true;
-        break;
-      }
-    }
+  setTimeout(() => {
+    const entry = state.svgArcs.find(a => a.id === atk.id);
+    if (entry) entry.revealed = true;
   }, animMs + 50);
 
-  // trim old arcs if we're over the limit
+  // trim oldest arcs if we're over the limit
   while (state.svgArcs.length > CONFIG.MAX_ARCS) {
-    var old = state.svgArcs.shift();
+    const old = state.svgArcs.shift();
     clearTimeout(old.timeout);
     old.el.remove();
   }
 }
 
 function removeArcById(id) {
-  for (var i = 0; i < state.svgArcs.length; i++) {
-    if (state.svgArcs[i].id === id) {
-      state.svgArcs[i].el.remove();
-      state.svgArcs.splice(i, 1);
-      return;
-    }
+  const idx = state.svgArcs.findIndex(a => a.id === id);
+  if (idx !== -1) {
+    state.svgArcs[idx].el.remove();
+    state.svgArcs.splice(idx, 1);
   }
 }
 
-// redraw all arcs — called on window resize to keep positions correct
+// called after window resize — snaps all arcs to new pixel coords
 function redrawArcs() {
   if (!state.map) return;
 
-  for (var i = 0; i < state.svgArcs.length; i++) {
-    var entry = state.svgArcs[i];
-    var atk = entry.atk;
-    var el  = entry.el;
+  for (const entry of state.svgArcs) {
+    const { atk, el, revealed } = entry;
+    const [sx, sy] = latLngToXY(atk.src.lat, atk.src.lng);
+    const [tx, ty] = latLngToXY(atk.tgt.lat, atk.tgt.lng);
 
-    var srcPt = latLngToXY(atk.src.lat, atk.src.lng);
-    var tgtPt = latLngToXY(atk.tgt.lat, atk.tgt.lng);
-    var sx = srcPt[0], sy = srcPt[1];
-    var tx = tgtPt[0], ty = tgtPt[1];
+    const d       = buildCurve(sx, sy, tx, ty);
+    const pathLen = measurePath(sx, sy, tx, ty);
 
-    var d = buildCurve(sx, sy, tx, ty);
-    var pathLen = measurePath(sx, sy, tx, ty);
-
-    // update the two path elements (glow + arc)
-    var paths = el.querySelectorAll('path');
-    for (var p = 0; p < paths.length; p++) {
-      paths[p].setAttribute('d', d);
-      // kill transition so it snaps to the new position instantly
-      paths[p].style.transition = 'none';
-      paths[p].style.strokeDasharray = pathLen;
-      // if the arc already finished its reveal animation, show it fully;
-      // otherwise keep it hidden (the travel animation will handle it)
-      paths[p].style.strokeDashoffset = entry.revealed ? 0 : pathLen;
+    for (const path of el.querySelectorAll('path')) {
+      path.setAttribute('d', d);
+      path.style.transition        = 'none';
+      path.style.strokeDasharray   = pathLen;
+      path.style.strokeDashoffset  = revealed ? 0 : pathLen;
     }
 
-    // move the circle elements
-    var circles = el.querySelectorAll('circle');
+    const circles = el.querySelectorAll('circle');
     if (circles[0]) { circles[0].setAttribute('cx', sx); circles[0].setAttribute('cy', sy); }
     if (circles[1]) { circles[1].setAttribute('cx', tx); circles[1].setAttribute('cy', ty); }
     if (circles[2]) { circles[2].setAttribute('cx', tx); circles[2].setAttribute('cy', ty); }
@@ -583,9 +557,9 @@ function redrawArcs() {
 }
 
 
-// -- add attack to the system --
+// ── Add attack ────────────────────────────────────────────
 
-var counterDirty = false;
+let counterDirty = false;
 
 function addAttack(atk) {
   state.attacks.unshift(atk);
@@ -597,54 +571,67 @@ function addAttack(atk) {
 
   drawArc(atk);
   addFeedRow(atk);
+  playAttackSound(atk.severity);
 
-  // batch counter updates so we're not thrashing the DOM
+  // batch DOM counter updates to avoid thrashing on rapid fire attacks
   if (!counterDirty) {
     counterDirty = true;
-    setTimeout(function() {
-      updateCounters();
-      counterDirty = false;
-    }, 500);
+    setTimeout(() => { updateCounters(); counterDirty = false; }, 500);
   }
 }
 
 
-// -- live feed --
+// ── Live feed ─────────────────────────────────────────────
 
-var feedTimestamps = [];
+let feedTimestamps = [];
 
 function addFeedRow(atk) {
-  var feed = document.getElementById('feed-scroll');
-  var isReal = (atk.source === 'otx');
+  const feed   = document.getElementById('feed-scroll');
+  const isReal = (atk.source === 'otx');
 
-  var row = document.createElement('div');
+  const row = document.createElement('div');
   row.className = 'feed-row';
   if (isReal) row.style.borderLeft = '2px solid ' + atk.color;
 
-  var html = '<div class="fr-top">' +
-    '<div class="fr-left">' +
-    '<span class="fr-dot" style="background:' + atk.color + '"></span>' +
-    '<span class="fr-type" style="color:' + atk.color + '">' + atk.label + '</span>' +
-    '<span class="fr-sev sev-' + atk.severity + '">' + atk.severity + '</span>';
-  if (isReal) html += '<span class="fr-real">● Real</span>';
-  html += '</div><span class="fr-time">just now</span></div>';
+  let html = `<div class="fr-top">
+    <div class="fr-left">
+      <span class="fr-dot" style="background:${atk.color}"></span>
+      <span class="fr-type" style="color:${atk.color}">${atk.label}</span>
+      <span class="fr-sev sev-${atk.severity}">${atk.severity}</span>`;
 
-  if (atk.pulse) html += '<div class="fr-pulse">⬡ ' + atk.pulse + '</div>';
+  if (isReal) html += `<span class="fr-real">● Real</span>`;
+  html += `</div><span class="fr-time">just now</span></div>`;
 
-  html += '<div class="fr-route">' +
-    '<div class="fr-side">' +
-    '<div class="fr-flag-name"><span class="fr-flag">' + atk.src.flag + '</span><span class="fr-country">' + atk.src.name + '</span></div>' +
-    '<div class="fr-ip">' + atk.src.ip + '</div></div>' +
-    '<div class="fr-arrow-icon"><svg width="26" height="10" viewBox="0 0 26 10" fill="none">' +
-    '<path d="M1 5H22M18 1.5L22 5L18 8.5" stroke="' + atk.color + '" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>' +
-    '</svg></div>' +
-    '<div class="fr-side right">' +
-    '<div class="fr-flag-name right"><span class="fr-country">' + atk.tgt.name + '</span><span class="fr-flag">' + atk.tgt.flag + '</span></div>' +
-    '<div class="fr-ip" style="text-align:right">' + atk.tgt.ip + ':' + atk.port + '</div></div></div>';
+  if (atk.pulse) html += `<div class="fr-pulse">⬡ ${atk.pulse}</div>`;
+
+  html += `<div class="fr-route">
+    <div class="fr-side">
+      <div class="fr-flag-name">
+        <span class="fr-flag">${atk.src.flag}</span>
+        <span class="fr-country">${atk.src.name}</span>
+      </div>
+      <div class="fr-ip">${atk.src.ip}</div>
+    </div>
+    <div class="fr-arrow-icon">
+      <svg width="26" height="10" viewBox="0 0 26 10" fill="none">
+        <path d="M1 5H22M18 1.5L22 5L18 8.5" stroke="${atk.color}" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
+    <div class="fr-side right">
+      <div class="fr-flag-name right">
+        <span class="fr-country">${atk.tgt.name}</span>
+        <span class="fr-flag">${atk.tgt.flag}</span>
+      </div>
+      <div class="fr-ip" style="text-align:right">${atk.tgt.ip}:${atk.port}</div>
+    </div>
+  </div>`;
 
   row.innerHTML = html;
-  feed.prepend(row);
 
+  // click a feed row to open the attack detail card
+  row.addEventListener('click', () => showCard(atk));
+
+  feed.prepend(row);
   feedTimestamps.unshift(Date.now());
 
   while (feed.children.length > CONFIG.MAX_FEED) {
@@ -655,28 +642,31 @@ function addFeedRow(atk) {
   document.getElementById('feed-count').textContent = feed.children.length;
 }
 
+// update "X seconds ago" labels in the feed
 function tickTimestamps() {
-  var rows = document.getElementById('feed-scroll').children;
-  var now = Date.now();
-  for (var i = 0; i < rows.length; i++) {
-    var el = rows[i].querySelector('.fr-time');
+  const rows = document.getElementById('feed-scroll').children;
+  const now  = Date.now();
+
+  for (let i = 0; i < rows.length; i++) {
+    const el  = rows[i].querySelector('.fr-time');
     if (!el || i >= feedTimestamps.length) continue;
-    var sec = Math.floor((now - feedTimestamps[i]) / 1000);
-    if (sec < 5)       el.textContent = 'just now';
+    const sec = Math.floor((now - feedTimestamps[i]) / 1000);
+    if      (sec < 5)  el.textContent = 'just now';
     else if (sec < 60) el.textContent = sec + 's';
     else               el.textContent = Math.floor(sec / 60) + 'm';
   }
 }
+
 setInterval(tickTimestamps, 5000);
 
 
-// -- counters --
+// ── Counters & sidebar lists ──────────────────────────────
 
 function updateCounters() {
   document.getElementById('total-count').textContent = totalCount.toLocaleString();
 
+  const cutoff = Date.now() - 60000;
   perMinBucket.push(Date.now());
-  var cutoff = Date.now() - 60000;
   while (perMinBucket.length && perMinBucket[0] < cutoff) perMinBucket.shift();
   document.getElementById('apm-count').textContent = perMinBucket.length;
 
@@ -687,113 +677,111 @@ function updateCounters() {
 }
 
 function updateRankList(elId, tally, barColor) {
-  var el = document.getElementById(elId);
-  var entries = Object.entries(tally).sort(function(a, b) { return b[1] - a[1]; }).slice(0, 6);
+  const el      = document.getElementById(elId);
+  const entries = Object.entries(tally).sort((a,b) => b[1]-a[1]).slice(0, 6);
   if (!entries.length) return;
 
-  var max = entries[0][1];
-  var html = '';
-  for (var i = 0; i < entries.length; i++) {
-    var code = entries[i][0];
-    var count = entries[i][1];
-    var c = byCode(code);
-    if (!c) continue;
-    var pct = Math.round((count / max) * 100);
-    html += '<div class="rank-item">' +
-      '<span class="rank-num">' + (i+1) + '</span>' +
-      '<span class="rank-flag">' + c.flag + '</span>' +
-      '<div class="rank-info"><div class="rank-name">' + c.name + '</div>' +
-      '<div class="rank-track"><div class="rank-fill" style="width:' + pct + '%;background:' + barColor + '"></div></div></div>' +
-      '<span class="rank-count">' + count + '</span></div>';
-  }
+  const max  = entries[0][1];
+  let html   = '';
+
+  entries.forEach(([code, count], i) => {
+    const c   = byCode(code);
+    if (!c) return;
+    const pct = Math.round((count / max) * 100);
+    html += `<div class="rank-item">
+      <span class="rank-num">${i+1}</span>
+      <span class="rank-flag">${c.flag}</span>
+      <div class="rank-info">
+        <div class="rank-name">${c.name}</div>
+        <div class="rank-track"><div class="rank-fill" style="width:${pct}%;background:${barColor}"></div></div>
+      </div>
+      <span class="rank-count">${count}</span>
+    </div>`;
+  });
+
   el.innerHTML = html;
 }
 
 function updateTypeList() {
-  var el = document.getElementById('type-list');
-  var total = 0;
-  var keys = Object.keys(state.typeTally);
-  for (var i = 0; i < keys.length; i++) total += state.typeTally[keys[i]];
+  const el    = document.getElementById('type-list');
+  const total = Object.values(state.typeTally).reduce((s,v) => s+v, 0);
   if (!total) return;
 
-  var sorted = ATTACK_TYPES.slice().sort(function(a, b) {
-    return (state.typeTally[b.id] || 0) - (state.typeTally[a.id] || 0);
+  const sorted = [...ATTACK_TYPES].sort((a,b) => (state.typeTally[b.id]||0) - (state.typeTally[a.id]||0));
+  let html = '';
+
+  sorted.slice(0, 8).forEach(t => {
+    const count = state.typeTally[t.id] || 0;
+    const pct   = Math.round((count / total) * 100);
+    html += `<div class="type-row">
+      <span class="type-dot" style="background:${t.color}"></span>
+      <span class="type-name">${t.label}</span>
+      <span class="type-pct">${pct}%</span>
+    </div>`;
   });
 
-  var html = '';
-  var limit = Math.min(sorted.length, 8);
-  for (var i = 0; i < limit; i++) {
-    var t = sorted[i];
-    var count = state.typeTally[t.id] || 0;
-    var pct = Math.round((count / total) * 100);
-    html += '<div class="type-row">' +
-      '<span class="type-dot" style="background:' + t.color + '"></span>' +
-      '<span class="type-name">' + t.label + '</span>' +
-      '<span class="type-pct">' + pct + '%</span></div>';
-  }
   el.innerHTML = html;
 }
 
 function buildTypeStats() {
-  var html = '';
-  for (var i = 0; i < ATTACK_TYPES.length; i++) {
-    var t = ATTACK_TYPES[i];
-    html += '<div class="ts-item">' +
-      '<span class="ts-dot" style="background:' + t.color + '"></span>' +
-      '<span class="ts-name">' + t.label + '</span>' +
-      '<span class="ts-count" id="ts-' + t.id + '" style="color:' + t.color + '">0</span></div>';
-  }
+  let html = '';
+  ATTACK_TYPES.forEach(t => {
+    html += `<div class="ts-item">
+      <span class="ts-dot" style="background:${t.color}"></span>
+      <span class="ts-name">${t.label}</span>
+      <span class="ts-count" id="ts-${t.id}" style="color:${t.color}">0</span>
+    </div>`;
+  });
   document.getElementById('type-stats').innerHTML = html;
 }
 
 function updateTypeStats() {
-  for (var i = 0; i < ATTACK_TYPES.length; i++) {
-    var t = ATTACK_TYPES[i];
-    var el = document.getElementById('ts-' + t.id);
+  ATTACK_TYPES.forEach(t => {
+    const el = document.getElementById('ts-' + t.id);
     if (el) el.textContent = state.typeTally[t.id] || 0;
-  }
+  });
 }
 
 
-// -- filter chips --
+// ── Filter chips ──────────────────────────────────────────
 
 function buildFilterChips() {
-  var container = document.getElementById('filter-chips');
+  const container = document.getElementById('filter-chips');
   container.appendChild(makeChip('All', 'all', true));
-  for (var i = 0; i < ATTACK_TYPES.length; i++) {
-    container.appendChild(makeChip(ATTACK_TYPES[i].label, ATTACK_TYPES[i].id, false));
-  }
+  ATTACK_TYPES.forEach(t => container.appendChild(makeChip(t.label, t.id, false)));
 }
 
 function makeChip(label, id, active) {
-  var el = document.createElement('span');
-  el.className = 'fchip' + (active ? ' active' : '');
-  el.textContent = label;
-  el.dataset.id = id;
-  el.addEventListener('click', function() {
-    var chips = document.querySelectorAll('.fchip');
-    for (var i = 0; i < chips.length; i++) chips[i].classList.remove('active');
+  const el = document.createElement('span');
+  el.className     = 'fchip' + (active ? ' active' : '');
+  el.textContent   = label;
+  el.dataset.id    = id;
+
+  el.addEventListener('click', () => {
+    document.querySelectorAll('.fchip').forEach(c => c.classList.remove('active'));
     el.classList.add('active');
     state.filter = id;
   });
+
   return el;
 }
 
 
-// -- clock --
+// ── Clock ─────────────────────────────────────────────────
 
 function updateClock() {
-  var n = new Date();
-  var h = String(n.getUTCHours()).padStart(2, '0');
-  var m = String(n.getUTCMinutes()).padStart(2, '0');
-  var s = String(n.getUTCSeconds()).padStart(2, '0');
-  document.getElementById('utc-clock').textContent = h + ':' + m + ':' + s;
+  const n = new Date();
+  const h = String(n.getUTCHours()).padStart(2, '0');
+  const m = String(n.getUTCMinutes()).padStart(2, '0');
+  const s = String(n.getUTCSeconds()).padStart(2, '0');
+  document.getElementById('utc-clock').textContent = `${h}:${m}:${s}`;
 }
+
 setInterval(updateClock, 1000);
 updateClock();
 
 
-// -- detail card --
+// ── Attack detail card ────────────────────────────────────
 
 function showCard(atk) {
   document.getElementById('ac-dot').style.background    = atk.color;
@@ -807,7 +795,7 @@ function showCard(atk) {
   document.getElementById('ac-tgt-flag').textContent    = atk.tgt.flag;
   document.getElementById('ac-tgt-country').textContent = atk.tgt.name;
   document.getElementById('ac-tgt-ip').textContent      = atk.tgt.ip;
-  document.getElementById('ac-meta').textContent = 'Port ' + atk.port + '  ·  ' + (atk.source === 'otx' ? '● Verified (OTX)' : 'Simulated');
+  document.getElementById('ac-meta').textContent        = `Port ${atk.port}  ·  ${atk.source === 'otx' ? '● Verified (OTX)' : 'Simulated'}`;
   document.getElementById('attack-card').classList.remove('hidden');
 }
 
@@ -816,17 +804,151 @@ window.closeCard = function() {
 };
 
 
-// -- sim loop --
+// ── Pause / Resume ────────────────────────────────────────
+
+let isPaused = false;
+
+window.togglePause = function() {
+  isPaused = !isPaused;
+  const btn  = document.getElementById('btn-pause');
+  const wrap = document.getElementById('map-wrap');
+  btn.textContent = isPaused ? '▶' : '⏸';
+  btn.title       = isPaused ? 'Resume' : 'Pause';
+  btn.classList.toggle('paused', isPaused);
+  wrap.classList.toggle('paused', isPaused);
+};
+
+
+// ── Speed control ─────────────────────────────────────────
+
+window.setSpeed = function(idx) {
+  const s = SPEEDS[idx];
+  if (!s) return;
+  CONFIG.SIM_MIN_MS = s.min;
+  CONFIG.SIM_MAX_MS = s.max;
+  document.querySelectorAll('.speed-btn').forEach((btn, i) => {
+    btn.classList.toggle('active', i === idx);
+  });
+};
+
+
+// ── Sound effects (Web Audio API) ─────────────────────────
+
+let soundEnabled = false;
+let audioCtx     = null;
+
+function getAudioCtx() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  return audioCtx;
+}
+
+function playAttackSound(severity) {
+  if (!soundEnabled) return;
+
+  // different pitch per severity level
+  const freqs = { critical: 880, high: 660, medium: 440, low: 330 };
+  const freq  = freqs[severity] || 440;
+
+  try {
+    const ctx  = getAudioCtx();
+    const osc  = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.frequency.value = freq;
+    osc.type            = 'sine';
+    gain.gain.setValueAtTime(0.06, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.18);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.18);
+  } catch(e) {
+    // browsers sometimes block AudioContext until a user gesture — just skip
+  }
+}
+
+window.toggleSound = function() {
+  soundEnabled = !soundEnabled;
+  const btn    = document.getElementById('btn-sound');
+  btn.textContent = soundEnabled ? '🔊' : '🔇';
+  btn.title       = soundEnabled ? 'Sound on (click to mute)' : 'Sound off (click to enable)';
+
+  // Chrome requires AudioContext creation inside a user gesture
+  if (soundEnabled) getAudioCtx();
+};
+
+
+// ── Theme system ──────────────────────────────────────────
+
+window.setTheme = function(name) {
+  document.documentElement.setAttribute('data-theme', name);
+  localStorage.setItem('lh-theme', name);
+
+  // swap the map tile layer to match the theme
+  if (state.map) {
+    if (state.tileLayer) state.map.removeLayer(state.tileLayer);
+    state.tileLayer = L.tileLayer(TILE_URLS[name] || TILE_URLS.dark, {
+      subdomains: 'abcd',
+      maxZoom: 20,
+    }).addTo(state.map);
+  }
+
+  document.querySelectorAll('.theme-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.theme === name);
+  });
+};
+
+function restoreTheme() {
+  const saved = localStorage.getItem('lh-theme');
+  if (saved && saved !== 'dark') setTheme(saved);
+}
+
+
+// ── Mobile panel toggles ──────────────────────────────────
+
+window.toggleFeedPanel = function() {
+  const feed    = document.getElementById('feed-panel');
+  const overlay = document.getElementById('mobile-overlay');
+  const isOpen  = feed.classList.toggle('open');
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('hamburger').classList.remove('open');
+  overlay.classList.toggle('show', isOpen);
+};
+
+window.closeMobilePanels = function() {
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('feed-panel').classList.remove('open');
+  document.getElementById('hamburger').classList.remove('open');
+  document.getElementById('mobile-overlay').classList.remove('show');
+};
+
+function initMobileToggle() {
+  const hamburger = document.getElementById('hamburger');
+  hamburger.addEventListener('click', () => {
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('mobile-overlay');
+    const isOpen  = sidebar.classList.toggle('open');
+    document.getElementById('feed-panel').classList.remove('open');
+    hamburger.classList.toggle('open', isOpen);
+    overlay.classList.toggle('show', isOpen);
+  });
+}
+
+
+// ── Simulation loop ───────────────────────────────────────
 
 function runSimLoop() {
-  var atk = simulate();
-  if (atk) addAttack(atk);
+  if (!isPaused) {
+    const atk = simulate();
+    if (atk) addAttack(atk);
+  }
+  // always re-schedule so resuming works without any extra code
   setTimeout(runSimLoop, ri(CONFIG.SIM_MIN_MS, CONFIG.SIM_MAX_MS));
 }
 
 function seedInitial() {
-  for (var i = 0; i < 15; i++) {
-    var atk = simulate();
+  // put some attacks in so the map isn't empty on load
+  for (let i = 0; i < 15; i++) {
+    const atk = simulate();
     if (!atk) continue;
     state.attacks.push(atk);
     state.srcTally[atk.src.code] = (state.srcTally[atk.src.code] || 0) + 1;
@@ -838,21 +960,22 @@ function seedInitial() {
 }
 
 
-// -- boot --
+// ── Boot ──────────────────────────────────────────────────
 
-window.addEventListener('load', function() {
+window.addEventListener('load', () => {
+  restoreTheme();
   initMap();
+  initMobileToggle();
   buildTypeStats();
   buildFilterChips();
   seedInitial();
 
-  setTimeout(function() {
-    for (var i = 0; i < state.attacks.length; i++) {
-      drawArc(state.attacks[i]);
-    }
+  // short delay so the map tiles can load before we draw arcs on top
+  setTimeout(() => {
+    state.attacks.forEach(atk => drawArc(atk));
     runSimLoop();
 
-    if (CONFIG.OTX_KEY && CONFIG.OTX_KEY !== 'YOUR_OTX_API_KEY_HERE' && CONFIG.OTX_KEY.length > 10) {
+    if (CONFIG.OTX_KEY && CONFIG.OTX_KEY.length > 10) {
       pollOTX();
       setInterval(pollOTX, CONFIG.OTX_INTERVAL);
     }

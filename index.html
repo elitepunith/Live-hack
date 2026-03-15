@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -14,6 +14,13 @@
   <!-- HEADER -->
   <header id="header">
     <div class="header-left">
+      <!-- hamburger only shows on mobile -->
+      <button class="hamburger" id="hamburger" aria-label="Toggle sidebar">
+        <span></span>
+        <span></span>
+        <span></span>
+      </button>
+
       <div class="logo">
         <div class="logo-icon">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -32,24 +39,50 @@
       </div>
     </div>
 
+    <!-- center nav — hidden on mobile -->
     <nav class="header-center">
       <span class="nav-item active">Threat Map</span>
     </nav>
 
     <div class="header-right">
-      <div class="header-stat">
+      <!-- stats — hide on small screens -->
+      <div class="header-stat hide-mobile">
         <span class="hs-label">Total Attacks</span>
         <span class="hs-value" id="total-count">—</span>
       </div>
-      <div class="header-divider"></div>
-      <div class="header-stat">
+      <div class="header-divider hide-mobile"></div>
+      <div class="header-stat hide-mobile">
         <span class="hs-label">Per Minute</span>
         <span class="hs-value accent" id="apm-count">—</span>
       </div>
-      <div class="header-divider"></div>
-      <div class="clock-wrap">
+      <div class="header-divider hide-mobile"></div>
+      <div class="clock-wrap hide-mobile">
         <span class="clock-label">UTC</span>
         <span class="clock-val mono" id="utc-clock">00:00:00</span>
+      </div>
+      <div class="header-divider hide-mobile"></div>
+
+      <!-- playback controls -->
+      <div class="ctrl-group">
+        <button class="ctrl-btn" id="btn-pause" title="Pause simulation" onclick="togglePause()">⏸</button>
+
+        <!-- speed: ×½ / ×1 / ×2 -->
+        <div class="speed-wrap" title="Simulation speed">
+          <button class="speed-btn" data-speed="0" onclick="setSpeed(0)">×½</button>
+          <button class="speed-btn active" data-speed="1" onclick="setSpeed(1)">×1</button>
+          <button class="speed-btn" data-speed="2" onclick="setSpeed(2)">×2</button>
+        </div>
+
+        <button class="ctrl-btn" id="btn-sound" title="Toggle sound" onclick="toggleSound()">🔇</button>
+      </div>
+
+      <div class="header-divider"></div>
+
+      <!-- theme switcher -->
+      <div class="theme-picker" title="Switch theme">
+        <button class="theme-btn active" data-theme="dark"  onclick="setTheme('dark')"  title="Dark">◐</button>
+        <button class="theme-btn"        data-theme="light" onclick="setTheme('light')" title="Light">◑</button>
+        <button class="theme-btn"        data-theme="neon"  onclick="setTheme('neon')"  title="Matrix">⌬</button>
       </div>
     </div>
   </header>
@@ -57,7 +90,7 @@
   <!-- LAYOUT -->
   <div id="layout">
 
-    <!-- Left sidebar -->
+    <!-- left sidebar -->
     <aside id="sidebar">
       <div class="sidebar-scroll">
         <div class="sidebar-section">
@@ -105,21 +138,20 @@
       </div>
     </aside>
 
-    <!-- Map area -->
+    <!-- map area -->
     <div id="map-wrap">
-      <!-- Leaflet map tiles -->
       <div id="map"></div>
 
-      <!-- SVG overlay for animated arcs — sits above the map -->
+      <!-- SVG arcs overlay — above map tiles, below UI -->
       <svg id="arc-svg" xmlns="http://www.w3.org/2000/svg"></svg>
 
-      <!-- Filter chips -->
+      <!-- filter chips -->
       <div id="filter-bar">
         <span class="filter-label mono">Filter</span>
         <div id="filter-chips"></div>
       </div>
 
-      <!-- Attack detail card -->
+      <!-- attack detail card -->
       <div id="attack-card" class="hidden">
         <div class="ac-header">
           <span class="ac-type-dot" id="ac-dot"></span>
@@ -147,15 +179,27 @@
         </div>
         <div class="ac-meta mono" id="ac-meta"></div>
       </div>
+
+      <!-- mobile: floating feed toggle button -->
+      <button class="mobile-feed-btn" id="mobile-feed-btn" onclick="toggleFeedPanel()" title="Show live feed">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+          <rect x="1" y="2" width="12" height="1.5" rx="0.75" fill="currentColor"/>
+          <rect x="1" y="5.5" width="9" height="1.5" rx="0.75" fill="currentColor"/>
+          <rect x="1" y="9" width="11" height="1.5" rx="0.75" fill="currentColor"/>
+        </svg>
+        Feed
+      </button>
     </div>
 
-    <!-- Right feed panel -->
+    <!-- right feed panel -->
     <aside id="feed-panel">
       <div class="feed-header">
         <div class="feed-title-row">
           <span class="chip-dot"></span>
           <span class="panel-title">Live Feed</span>
         </div>
+        <!-- close button visible on mobile -->
+        <button class="feed-close hide-desktop" onclick="closeMobilePanels()">✕</button>
         <span class="feed-count mono" id="feed-count">0</span>
       </div>
       <div id="feed-scroll"></div>
@@ -168,12 +212,15 @@
     <div id="type-stats"></div>
     <div class="bottom-legend">
       <span class="legend-label">Severity</span>
-      <div class="legend-item"><span class="ldot" style="background:#ef4444"></span>Critical</div>
-      <div class="legend-item"><span class="ldot" style="background:#f97316"></span>High</div>
-      <div class="legend-item"><span class="ldot" style="background:#eab308"></span>Medium</div>
-      <div class="legend-item"><span class="ldot" style="background:#22c55e"></span>Low</div>
+      <div class="legend-item"><span class="ldot" style="background:#ef4444"></span><span class="hide-mobile">Critical</span></div>
+      <div class="legend-item"><span class="ldot" style="background:#f97316"></span><span class="hide-mobile">High</span></div>
+      <div class="legend-item"><span class="ldot" style="background:#eab308"></span><span class="hide-mobile">Medium</span></div>
+      <div class="legend-item"><span class="ldot" style="background:#22c55e"></span><span class="hide-mobile">Low</span></div>
     </div>
   </div>
+
+  <!-- mobile backdrop — clicking it closes any open panel -->
+  <div id="mobile-overlay" onclick="closeMobilePanels()"></div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="script.js"></script>
